@@ -91,3 +91,7 @@ It could fix parallelogram distortions.
 
 # Terms of use
 You can modify code if you want. Bug reports and pull requests appreciated.
+
+# Links
+Video presentation: https://www.youtube.com/watch?v=mXp3R2wKOIw
+Reddit post: https://www.reddit.com/r/esp32projects/comments/1tdrvur/esp32_cyd_pocket_digital_assistant/

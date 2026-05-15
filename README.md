@@ -1,31 +1,40 @@
 # Description
 This is PDA firmware for ESP32 Cheap Yellow Display. Inspired by Palm OS.
 
-PDA is Personal Digital Assistant. Small handheld computer.
+PDA is Personal Digital Assistant. Small handheld computer. Like smartphone without phone functions.
 
 # Details
-It uses internal Flash for files storage. FFat as filesystem.
+* No additional hardware required. All you need is CYD
+* It uses internal Flash for files storage. FFat as filesystem.
+* You can add your own internal apps by modifying arduino code.
 
-You can add your own internal apps by modifying arduino code.
+# Required libraries
+* TFT_eSPI - install via arduino library manager
+* XPT2046_Touchscreen - install via arduino library manager
 
 # Installation
-Add ESP32 CYD support for arduino.
-
+* Install Arduino IDE
+* Install Required libraries (see above)
+* Board Selection: In the Arduino IDE, go to Tools > Board and select ESP32-2432S028R
 Change one file (?)
-
-Set arduino settings
+* Set in Arduino IDE Tools - Partition scheme - Default 4 Mb with FFat (1.2 MP APP/1.5 MB FATFS)
+* Compile and upload
+* Done
 
 # First run
-Format internal flash for FFat
-
-Calibrate sensor
-
-Done!
+* Calibrate
+* Go to Files - Format FFat if asked
+* Create Settings folder
+* Calibrate sensor again - calibration data stored in a /Settings/Calibration
+* Done
 
 # Usage
-Touch and hold title to exit app.
-
-For screensavers touch and hold anywhere to exit.
+* Tap app name to launch this app
+* Touch and hold app title to exit app
+* Tap buttons in app to perform actions
+* For screensavers touch and hold anywhere to exit
+* To force perform calibration on start hold touchscreen during reboot
+* You can set password in Security app. Password asked when power on. Password stored in a plaintext, no encryption
 
 # Applications/Functions
 * File management (with viewing and editing support)

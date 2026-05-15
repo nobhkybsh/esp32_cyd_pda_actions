@@ -47,7 +47,7 @@
 2026-05-12 Копирование и перемещение файлов, рисование линиями, таймер, яркость
 2026-05-13 Секундомер, свободная память (heap) в информации о системе,
   доработка шрифтов, фоторезистор в информацию, особые кнопки у клавиатуры, индикатор выхода из приложения
-2026-05-14 Баг секундомера, баг таймера, дыхательный таймер
+2026-05-14 Баг секундомера, баг таймера, дыхательный таймер, подключение к Wi-Fi
 
 Направления работы:
 - Русский шрифт маленький и средний
@@ -55,7 +55,7 @@
 - PIM-приложения
 */
 
-#define IS_WIFI_ENABLED
+//#define IS_WIFI_ENABLED
 
 #include <SPI.h>
 #include <TFT_eSPI.h>
@@ -2234,6 +2234,8 @@ void view_file(char *title, char *filename) {
   }
 }
 
+#define EDIT_FILE_LENGTH_MAX 8192
+
 // Редактирование небольшого файла
 void edit_file(char *title, char *filename) {
   fs::File file;
@@ -2258,7 +2260,7 @@ void edit_file(char *title, char *filename) {
   char byte;
   char buff[80];
   char current_string[80];
-  char contents[8192];
+  char contents[EDIT_FILE_LENGTH_MAX];
   char caps_flag = 0;
   char symbol_flag = 0;
   int prev_width = 0;
@@ -2307,7 +2309,7 @@ void edit_file(char *title, char *filename) {
     contents[file_offset_bytes] = file.read();
     contents[file_offset_bytes + 1] = 0;
     file_offset_bytes++;
-    if(file_offset_bytes >= 8191) break;
+    if(file_offset_bytes >= (EDIT_FILE_LENGTH_MAX - 1)) break;
   }
   file.close();
 
@@ -2489,16 +2491,18 @@ void edit_file(char *title, char *filename) {
         symbol_flag = !symbol_flag;
       }
       else {
-        for(file_offset_bytes = strlen(contents); file_offset_bytes >= cursor_offset_bytes; file_offset_bytes--) {
-          contents[file_offset_bytes + 1] = contents[file_offset_bytes];
+        if(strlen(contents) < (EDIT_FILE_LENGTH_MAX - 1)) {
+          for(file_offset_bytes = strlen(contents); file_offset_bytes >= cursor_offset_bytes; file_offset_bytes--) {
+            contents[file_offset_bytes + 1] = contents[file_offset_bytes];
+          }
+          if(button == 35) {
+            contents[cursor_offset_bytes] = '\n';
+          }
+          else {
+            contents[cursor_offset_bytes] = keyboard_current[button][0];
+          }
+          cursor_offset_bytes++;
         }
-        if(button == 35) {
-          contents[cursor_offset_bytes] = '\n';
-        }
-        else {
-          contents[cursor_offset_bytes] = keyboard_current[button][0];
-        }
-        cursor_offset_bytes++;
       }
     }
 

@@ -15,14 +15,16 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 # Installation
 * Install Arduino IDE
 * Install Required libraries (see above)
+* Replace User_Setup.h with a file from https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/DisplayConfig/User_Setup.h
+* Add ESP32 libraries 
 * Board Selection: In the Arduino IDE, go to Tools > Board and select ESP32-2432S028R
-Change one file (?)
 * Set in Arduino IDE Tools - Partition scheme - Default 4 Mb with FFat (1.2 MP APP/1.5 MB FATFS)
 * Compile and upload
 * Done
+Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32-2432s028r/ if you have troubles.
 
 # First run
-* Calibrate
+* Calibrate sensor screen
 * Go to Files - Format FFat if asked
 * Create Settings folder
 * Calibrate sensor again - calibration data stored in a /Settings/Calibration

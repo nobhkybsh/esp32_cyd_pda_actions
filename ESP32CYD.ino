@@ -20,6 +20,7 @@
 - Тест экрана
 - Скринсейвер
 - Игра пятнашки
+- Игра выключи свет
 - Читалка
 - Редактирование файла
 - Генератор случайных чисел
@@ -48,11 +49,17 @@
 2026-05-13 Секундомер, свободная память (heap) в информации о системе,
   доработка шрифтов, фоторезистор в информацию, особые кнопки у клавиатуры, индикатор выхода из приложения
 2026-05-14 Баг секундомера, баг таймера, дыхательный таймер, подключение к Wi-Fi
+2026-05-15 Выложил проект на гитхаб, ютуб, реддит; создание папки настроек после форматирования, константы, игра выключи свет, выигрыш в пятнашках
 
 Направления работы:
-- Русский шрифт маленький и средний
+- Русский шрифт маленький и средний, русская клавиатура
 - Вай-фай сервисы
 - PIM-приложения
+- Поддержка SD
+- Больше приложений
+- Больше игр
+- Больше заставок
+- Больше настроек
 */
 
 //#define IS_WIFI_ENABLED
@@ -90,7 +97,13 @@ XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 
 #define SCREEN_WIDTH tft.width()
 #define SCREEN_HEIGHT tft.height()
-#define FONT_SIZE 2
+
+#define FONT_TRUETYPE 1
+#define FONT_DEFAULT 2
+#define FONT_BIG 4
+#define FONT_BIGGER 6
+#define FONT_BIG_SEGMENT 7
+#define FONT_BIGGEST 8
 
 #define LED_RED 4
 #define LED_GREEN 16
@@ -181,6 +194,7 @@ void timer(char mode, char *io_buff);
 void stopwatch_app(char mode, char *io_buff);
 void breathe(char mode, char *io_buff);
 void brightness_app(char mode, char *io_buff);
+void lights_off(char mode, char *io_buff);
 
 typedef void (*app_pointer) (char mode, char *io_buff);
 
@@ -205,6 +219,7 @@ app_pointer apps[] = {
   brightness_app,
   touch_calibration,
   fifteen,
+  lights_off,
   NULL
 };
 
@@ -227,7 +242,7 @@ void launcher(char mode, char *io_buff) {
       if(apps[i]) {
         apps[i](0, app_name);
         tft.setTextColor(TFT_BLACK, TFT_WHITE);
-        tft.drawString(app_name, 8, i * 16, FONT_SIZE);
+        tft.drawString(app_name, 8, i * 16, FONT_DEFAULT);
       }
       else {
         apps_eol = i;
@@ -249,13 +264,13 @@ void launcher(char mode, char *io_buff) {
       apps[i](0, app_name);
       tft.fillRect(0, i * 16, tft.width(), 16, TFT_BLUE);
       tft.setTextColor(TFT_WHITE, TFT_BLUE);
-      tft.drawString(app_name, 8, i * 16, FONT_SIZE);
+      tft.drawString(app_name, 8, i * 16, FONT_DEFAULT);
       delay(100);
       touchWaitRelease();
 
       tft.fillRect(0, i * 16, tft.width(), 16, TFT_WHITE);
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString(app_name, 8, i * 16, FONT_SIZE);
+      tft.drawString(app_name, 8, i * 16, FONT_DEFAULT);
 
       apps[i](1, NULL);
       break;
@@ -306,7 +321,7 @@ void calculator(char mode, char *io_buff) {
   }
   tft.fillRect(0, 40, tft.width(), 32, TFT_WHITE);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
-  tft.drawRightString(screen, tft.width() - 16, 40, FONT_SIZE + 2);
+  tft.drawRightString(screen, tft.width() - 16, 40, FONT_BIG);
 
   while(1) {
     touchWaitPress();
@@ -442,7 +457,7 @@ void calculator(char mode, char *io_buff) {
       }
       tft.fillRect(0, 40, tft.width(), 32, TFT_WHITE);
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawRightString(screen, tft.width() - 16, 40, FONT_SIZE + 2);
+      tft.drawRightString(screen, tft.width() - 16, 40, FONT_BIG);
     }
     if(global_exit_flag) {
       global_exit_flag = 0;
@@ -485,28 +500,28 @@ void system_info(char mode, char *io_buff) {
     i = 0;
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     while(data[i]) {
-      tft.drawString(data[i], 2, 16 + i * 16, FONT_SIZE);
+      tft.drawString(data[i], 2, 16 + i * 16, FONT_DEFAULT);
       i++;
     }
 
     sprintf(buff, "FFat Total: %d bytes ", FFat.totalBytes());
-    tft.drawString(buff, 2, 32 + i * 16, FONT_SIZE);
+    tft.drawString(buff, 2, 32 + i * 16, FONT_DEFAULT);
     i++;
 
     sprintf(buff, "FFat Used: %d bytes (%d%%) ", FFat.usedBytes(), (int)floor(100 * FFat.usedBytes() / FFat.totalBytes()));
-    tft.drawString(buff, 2, 32 + i * 16, FONT_SIZE);
+    tft.drawString(buff, 2, 32 + i * 16, FONT_DEFAULT);
     i++;
 
     sprintf(buff, "Free heap: %d bytes", esp_get_free_heap_size());
-    tft.drawString(buff, 2, 32 + i * 16, FONT_SIZE);
+    tft.drawString(buff, 2, 32 + i * 16, FONT_DEFAULT);
     i++;
 
     sprintf(buff, "Uptime: %dh %dm %ds     ", millis() / 3600000, (millis() / 60000) % 60, (millis() / 1000) % 60);
-    tft.drawString(buff, 2, 32 + i * 16, FONT_SIZE);
+    tft.drawString(buff, 2, 32 + i * 16, FONT_DEFAULT);
     i++;
 
     sprintf(buff, "Light sensor: %d    ", analogRead(LIGHT_SENSOR));
-    tft.drawString(buff, 2, 32 + i * 16, FONT_SIZE);
+    tft.drawString(buff, 2, 32 + i * 16, FONT_DEFAULT);
     i++;
 
     while(millis() - update_millis < 1000) {
@@ -527,6 +542,7 @@ void files(char mode, char *io_buff) {
   fs::File file;
   fs::File file_copy;
   int file_selected = 0;
+  int prev_file_selected = 0;
   int file_offset = 0;
   int file_index = 0;
   char redraw_required = 0;
@@ -581,6 +597,7 @@ void files(char mode, char *io_buff) {
       if(!strcmp("/", path)) {
         if(drawConfirm("Format FFat?") == 0) {
           FFat.format();
+          FFat.mkdir("/Settings");
         }
       }
       return;
@@ -591,7 +608,7 @@ void files(char mode, char *io_buff) {
     sprintf(buff2, "Path: %s", path);
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     tft.fillRect(0, 16, tft.width(), 16, TFT_WHITE);
-    tft.drawString(buff2, 8, 16, FONT_SIZE);
+    tft.drawString(buff2, 8, 16, FONT_DEFAULT);
 
     // Освобождаем память
     if(files) {
@@ -903,14 +920,14 @@ void security(char mode, char *io_buff) {
 
     tft.fillRect(0, 16, tft.width(), 100, TFT_WHITE);
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
-    tft.drawString("Owner info:", 8, 20, FONT_SIZE);
-    tft.drawString(owner_info, 8, 20 + 16, FONT_SIZE);
+    tft.drawString("Owner info:", 8, 20, FONT_DEFAULT);
+    tft.drawString(owner_info, 8, 20 + 16, FONT_DEFAULT);
     
     if(strlen(correct_password) > 0) {
-      tft.drawString("Password is set", 8, 20 + 16 + 16 + 8, FONT_SIZE);
+      tft.drawString("Password is set", 8, 20 + 16 + 16 + 8, FONT_DEFAULT);
     }
     else {
-      tft.drawString("Password is not set", 8, 20 + 16 + 16 + 8, FONT_SIZE);
+      tft.drawString("Password is not set", 8, 20 + 16 + 16 + 8, FONT_DEFAULT);
     }
 
     drawButtonMatrix(8, 100, tft.width() - 8 * 2, 100, buttons, 1, 3);
@@ -996,7 +1013,7 @@ void counter(char mode, char *io_buff) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
     sprintf(buff, "%ld", counter);
-    tft.drawCentreString(buff, tft.width() / 2, 20, FONT_SIZE + 2);
+    tft.drawCentreString(buff, tft.width() / 2, 20, FONT_BIG);
 
     drawButtonMatrix(8, 50, tft.width() - 8 * 2, 200, buttons_inc, 1, 1);
     drawButtonMatrix(8, 250, tft.width() - 8 * 2, 50, buttons_other, 2, 1);
@@ -1092,7 +1109,7 @@ void random_numbers(char mode, char *io_buff) {
 
         tft.fillRect(0, 16, tft.width(), 30, TFT_WHITE);
         tft.setTextColor(TFT_BLACK, TFT_WHITE);
-        tft.drawCentreString(buff, tft.width() / 2, 20, FONT_SIZE + 2);
+        tft.drawCentreString(buff, tft.width() / 2, 20, FONT_BIG);
         delay(100);
       }
     }
@@ -1130,7 +1147,7 @@ void brightness_app(char mode, char *io_buff) {
   while(1) {
     sprintf(buff, "   %d   ", get_brightness());
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
-    tft.drawCentreString(buff, tft.width() / 2, 20, FONT_SIZE + 2);
+    tft.drawCentreString(buff, tft.width() / 2, 20, FONT_BIG);
 
     drawButtonMatrix(0, 50, tft.width(), tft.height() - 50, buttons, 2, 4);
 
@@ -1223,7 +1240,7 @@ void timer(char mode, char *io_buff) {
         if(auto_restart == 0) {
           // Хочу видеть ноль секунд когда время вышло
           sprintf(buff, "%02d", 0);
-          tft.drawCentreString(buff, 3 * tft.width() / 4, 56, FONT_SIZE + 2);
+          tft.drawCentreString(buff, 3 * tft.width() / 4, 56, FONT_BIG);
 
           drawInfo("Time's up!");
           tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
@@ -1249,9 +1266,9 @@ void timer(char mode, char *io_buff) {
     // Рисуем время
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     sprintf(buff, "%02d", minutes);
-    tft.drawCentreString(buff, 1 * tft.width() / 4, 56, FONT_SIZE + 2);
+    tft.drawCentreString(buff, 1 * tft.width() / 4, 56, FONT_BIG);
     sprintf(buff, "%02d", seconds);
-    tft.drawCentreString(buff, 3 * tft.width() / 4, 56, FONT_SIZE + 2);
+    tft.drawCentreString(buff, 3 * tft.width() / 4, 56, FONT_BIG);
 
     // Если таймер запущен и касаний нет - остальное не рисуем
     if(timer_run && touchCheckNowait() == 0 && redraw_flag == 0) {
@@ -1265,10 +1282,10 @@ void timer(char mode, char *io_buff) {
     drawButtonMatrix(0, 190, tft.width() / 2, 32, buttons_auto_restart, 1, 1);
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     if(auto_restart) {
-      tft.drawCentreString(" on ", 3 * tft.width() / 4, 196, FONT_SIZE);
+      tft.drawCentreString(" on ", 3 * tft.width() / 4, 196, FONT_DEFAULT);
     }
     else {
-      tft.drawCentreString(" off ", 3 * tft.width() / 4, 196, FONT_SIZE);
+      tft.drawCentreString(" off ", 3 * tft.width() / 4, 196, FONT_DEFAULT);
     }
     drawButtonMatrix(0, 240, tft.width(), tft.height() - 240, buttons_presets, 2, 2);
 
@@ -1447,7 +1464,7 @@ void stopwatch_app(char mode, char *io_buff) {
 
     // Рисуем время
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
-    tft.drawCentreString(buff, tft.width() / 2, 20, FONT_SIZE + 2);
+    tft.drawCentreString(buff, tft.width() / 2, 20, FONT_BIG);
 
     // Если таймер запущен и касаний нет - остальное не рисуем
     if(stopwatch_run && touchCheckNowait() == 0 && redraw_flag == 0) {
@@ -1666,11 +1683,11 @@ void breathe(char mode, char *io_buff) {
       }
 
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawCentreString(stage, tft.width() / 2, 46, FONT_SIZE + 2);
-      tft.drawCentreString(buff, tft.width() / 2, 80, FONT_SIZE + 2);
+      tft.drawCentreString(stage, tft.width() / 2, 46, FONT_BIG);
+      tft.drawCentreString(buff, tft.width() / 2, 80, FONT_BIG);
 
       sprintf(buff, "Total time: %02d:%02d", total_millis / 60000, (total_millis / 1000) % 60);
-      tft.drawCentreString(buff, tft.width() / 2, 20, FONT_SIZE);
+      tft.drawCentreString(buff, tft.width() / 2, 20, FONT_DEFAULT);
     }
 
     // Если таймер запущен и касаний нет - остальное не рисуем
@@ -1923,7 +1940,7 @@ void wifi(char mode, char *io_buff) {
   while(1) {
     if(rescan_flag) {
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString("Scanning...      ", 0, 16, FONT_SIZE);
+      tft.drawString("Scanning...      ", 0, 16, FONT_DEFAULT);
       for(i = 0; i < WIFI_MAX_NETWORKS; i++) {
         if(networks[network_index]) {
           free(networks[network_index]);
@@ -1948,7 +1965,7 @@ void wifi(char mode, char *io_buff) {
         }
       }
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString("Select network:", 0, 16, FONT_SIZE);
+      tft.drawString("Select network:", 0, 16, FONT_DEFAULT);
       rescan_flag = 0;
     }
 
@@ -2139,7 +2156,7 @@ void view_file(char *title, char *filename) {
           break;
         }
         // Если это единственное слово в строке и оно уже не помещается
-        if(current_string[0] == 0 && tft.textWidth(buff, FONT_SIZE) + 10 >= tft.width()) {
+        if(current_string[0] == 0 && tft.textWidth(buff, FONT_DEFAULT) + 10 >= tft.width()) {
           show_line_flag = 1;
           long_string_flag = 1;
           break;
@@ -2154,10 +2171,10 @@ void view_file(char *title, char *filename) {
         show_line_flag = 1;
       }
       // Проверяем, поместится ли на текущую строку
-      if(current_string[0] == 0 || tft.textWidth(buff, FONT_SIZE) + word_in_line_offset < tft.width()) {
+      if(current_string[0] == 0 || tft.textWidth(buff, FONT_DEFAULT) + word_in_line_offset < tft.width()) {
         // Если поместилась - дописываем в буфер
         strcat(current_string, buff);
-        word_in_line_offset += tft.textWidth(buff, FONT_SIZE);
+        word_in_line_offset += tft.textWidth(buff, FONT_DEFAULT);
       }
       else {
         show_line_flag = 1;
@@ -2170,7 +2187,7 @@ void view_file(char *title, char *filename) {
       if(show_line_flag) {
         word_in_line_offset = 0;
         if(current_file_offset_lines >= show_file_offset_lines) {
-          tft.drawString(current_string, 1, 16 + current_line_on_screen * 16, FONT_SIZE);
+          tft.drawString(current_string, 1, 16 + current_line_on_screen * 16, FONT_DEFAULT);
           // Копируем в буфер непоместившееся слово, если оно есть (не новая строка)
           if(new_line_flag == 0 && long_string_flag == 0) {
             strcpy(current_string, buff);
@@ -2187,7 +2204,7 @@ void view_file(char *title, char *filename) {
 
           last_line_visible_flag = 0;
           if(show_next_line_flag) {
-            tft.drawString(current_string, 1, 16 + current_line_on_screen * 16, FONT_SIZE);
+            tft.drawString(current_string, 1, 16 + current_line_on_screen * 16, FONT_DEFAULT);
             current_string[0] = 0;
             current_line_on_screen++;
             last_line_visible_flag = 1;
@@ -2349,7 +2366,7 @@ void edit_file(char *title, char *filename) {
         byte = contents[file_offset_bytes];
         // Если курсор не перемещали касанием, то находим его место
         if(set_cursor_from_touch == 0 && cursor_offset_bytes == file_offset_bytes) {
-          cursor_screen_pos_x = tft.textWidth(buff, FONT_SIZE);
+          cursor_screen_pos_x = tft.textWidth(buff, FONT_DEFAULT);
           cursor_screen_pos_y = 16 + screen_line_number * 16;
           cursor_line_number = screen_line_number;
         }
@@ -2359,9 +2376,9 @@ void edit_file(char *title, char *filename) {
           // Таким образом курсор может оказаться от начала строки до конца строки
           if(touch_y >= 16 + screen_line_number * 16
             && touch_y < 16 + (screen_line_number + 1) * 16
-            && touch_x >= tft.textWidth(buff, FONT_SIZE)
+            && touch_x >= tft.textWidth(buff, FONT_DEFAULT)
           ) {
-            cursor_screen_pos_x = tft.textWidth(buff, FONT_SIZE);
+            cursor_screen_pos_x = tft.textWidth(buff, FONT_DEFAULT);
             cursor_offset_bytes = file_offset_bytes;
 
             // Если это последний символ в файле, то если касание правее него, то нужно поставить курсор после последнего символа
@@ -2369,8 +2386,8 @@ void edit_file(char *title, char *filename) {
               // Добавляем символ в строку, получаем ширину, удаляем символ
               buff[string_offset] = byte;
               buff[string_offset + 1] = 0;
-              if(touch_x >= tft.textWidth(buff, FONT_SIZE)) {
-                cursor_screen_pos_x = tft.textWidth(buff, FONT_SIZE);
+              if(touch_x >= tft.textWidth(buff, FONT_DEFAULT)) {
+                cursor_screen_pos_x = tft.textWidth(buff, FONT_DEFAULT);
                 cursor_offset_bytes = file_offset_bytes + 1;
               }
               buff[string_offset] = 0;
@@ -2399,8 +2416,8 @@ void edit_file(char *title, char *filename) {
         string_offset++;
         buff[string_offset] = 0;
 
-        prev_width = tft.textWidth(buff, FONT_SIZE);
-        if(tft.textWidth(buff, FONT_SIZE) + 10 >= tft.width()) {
+        prev_width = tft.textWidth(buff, FONT_DEFAULT);
+        if(tft.textWidth(buff, FONT_DEFAULT) + 10 >= tft.width()) {
           break;
         }
         if(string_offset >= 60) {
@@ -2411,7 +2428,7 @@ void edit_file(char *title, char *filename) {
       // Если курсор стоит после последнего символа, этот кусок не отрабатывает
       // Если курсор не перемещали касанием, то находим его место
       if(set_cursor_from_touch == 0 && cursor_offset_bytes == file_offset_bytes && (byte != '\n' && byte != '\r')) {
-        cursor_screen_pos_x = tft.textWidth(buff, FONT_SIZE);
+        cursor_screen_pos_x = tft.textWidth(buff, FONT_DEFAULT);
         cursor_screen_pos_y = 16 + screen_line_number * 16;
         cursor_line_number = screen_line_number;
       }
@@ -2425,7 +2442,7 @@ void edit_file(char *title, char *filename) {
 
       // Пора показать строку
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString(buff, 1, 16 + screen_line_number * 16, FONT_SIZE);
+      tft.drawString(buff, 1, 16 + screen_line_number * 16, FONT_DEFAULT);
       screen_line_number++;
 
       // Если экран заполнен - выходим
@@ -2565,7 +2582,7 @@ void touch_calibration(char mode, char *io_buff) {
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
   clearScreen();
-  tft.drawCentreString("Touch left top cross center", tft.width() / 2, tft.height() / 2 - 16, FONT_SIZE);
+  tft.drawCentreString("Touch left top cross center", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   tft.drawLine(offset - 5, offset - 5, offset + 5, offset + 5, TFT_BLACK);
   tft.drawLine(offset - 5, offset + 5, offset + 5, offset - 5, TFT_BLACK);
   delay(1000);
@@ -2575,7 +2592,7 @@ void touch_calibration(char mode, char *io_buff) {
   delay(1000);  
 
   clearScreen();
-  tft.drawCentreString("Touch left bottom cross center", tft.width() / 2, tft.height() / 2 - 16, FONT_SIZE);
+  tft.drawCentreString("Touch left bottom cross center", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   tft.drawLine(offset - 5, tft.height() - 2 - offset - 5, offset + 5, tft.height() - 2 - offset + 5, TFT_BLACK);
   tft.drawLine(offset - 5, tft.height() - 2 - offset + 5, offset + 5, tft.height() - 2 - offset - 5, TFT_BLACK);
   delay(1000);
@@ -2585,7 +2602,7 @@ void touch_calibration(char mode, char *io_buff) {
   delay(1000);  
 
   clearScreen();
-  tft.drawCentreString("Touch right top cross center", tft.width() / 2, tft.height() / 2 - 16, FONT_SIZE);
+  tft.drawCentreString("Touch right top cross center", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   tft.drawLine(tft.width() - 2 - offset - 5, offset - 5, tft.width() - 2 - offset + 5, offset + 5, TFT_BLACK);
   tft.drawLine(tft.width() - 2 - offset - 5, offset + 5, tft.width() - 2 - offset + 5, offset - 5, TFT_BLACK);
   delay(1000);
@@ -2607,7 +2624,7 @@ void touch_calibration(char mode, char *io_buff) {
   cy = det3(p1.x, p1.y, offset, p2.x, p2.y, tft.height() - offset - 1, p3.x, p3.y, offset) / d;
 
   clearScreen();
-  tft.drawCentreString("Done!", tft.width() / 2, tft.height() / 2 - 16, FONT_SIZE);
+  tft.drawCentreString("Done!", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   while(touchscreen.tirqTouched() && touchscreen.touched()) {
     TS_Point p = touchscreen.getPoint();
     touch_x = touchMapX(p.x, p.y);
@@ -2628,9 +2645,20 @@ void fifteen(char mode, char *io_buff) {
   int button_pressed;
   int empty_tile = 15;
   int moves_remain;
+  int i;
+  int level = 1;
+  int steps = 0;
   char valid_move_flag;
   char shuffle_flag = 1;
+  char won_flag = 0;
   char *tmp;
+  char buff[80];
+  char *buttons_won[] = {
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL
+  };
   char *buttons[] = {
     "1", "2", "3", "4",
     "5", "6", "7", "8",
@@ -2639,6 +2667,10 @@ void fifteen(char mode, char *io_buff) {
     NULL
   };
   
+  for(i = 0; i < 16; i++) {
+    buttons_won[i] = buttons[i];
+  }
+
   if(mode == 0) {
     strcpy(io_buff, "Fifteen");
     return;
@@ -2650,6 +2682,7 @@ void fifteen(char mode, char *io_buff) {
   while(1) {
     if(shuffle_flag) {
       // Перемешиваем
+      steps = 0;
       moves_remain = 1000;
       while(moves_remain > 0) {
         valid_move_flag = 0;
@@ -2668,8 +2701,16 @@ void fifteen(char mode, char *io_buff) {
       }
       shuffle_flag = 0;
     }
-    // Не ошибка, нужен квадрат
+
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    sprintf(buff, "Level: %d", level);
+    tft.drawString(buff, 8, 20, FONT_DEFAULT);
+
+    sprintf(buff, "Steps: %d", steps);
+    tft.drawString(buff, tft.width() / 2, 20, FONT_DEFAULT);
+
     drawButtonMatrix(0, 64, tft.width(), tft.width(), buttons, 4, 4);
+
     touchWaitPress();
     button_pressed = touchCheckMatrix(0, 64, tft.width(), tft.width(), buttons, 4, 4);
     if(button_pressed != -1) {
@@ -2683,7 +2724,133 @@ void fifteen(char mode, char *io_buff) {
       buttons[button_pressed] = buttons[empty_tile];
       buttons[empty_tile] = tmp;
       empty_tile = button_pressed;
+      steps++;
     }
+
+    won_flag = 1;
+    for(i = 0; i < 16; i++) {
+      if(buttons_won[i] != buttons[i]) won_flag = 0;
+    }
+    if(won_flag) {
+      drawInfo("You won!");
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      shuffle_flag = 1;
+      steps = 0;
+      level++;
+      won_flag = 0;
+    }
+
+    if(global_exit_flag) {
+      global_exit_flag = 0;
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+void lights_off(char mode, char *io_buff) {
+  int button_pressed;
+  int moves_remain;
+  int i;
+  char valid_move_flag;
+  char shuffle_flag = 1;
+  int level = 1;
+  int steps = 0;
+  char buff[80];
+  char won_flag = 0;
+  char *on = "on";
+  char *off = "";
+  char *buttons[] = {
+    off, off, off, off, off,
+    off, off, off, off, off,
+    off, off, off, off, off,
+    off, off, off, off, off,
+    off, off, off, off, off,
+    NULL
+  };
+  
+  if(mode == 0) {
+    strcpy(io_buff, "Lights Off");
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Lights Off");
+
+  while(1) {
+    if(shuffle_flag) {
+      // Перемешиваем
+      steps = 0;
+      moves_remain = level;
+      while(moves_remain > 0) {
+        valid_move_flag = 0;
+        button_pressed = random(0, 25);
+
+        buttons[button_pressed] = buttons[button_pressed] == off ? on : off;
+        if(button_pressed % 5 != 0) {
+          buttons[button_pressed - 1] = buttons[button_pressed - 1] == off ? on : off;
+        }
+        if(button_pressed % 5 != 4) {
+          buttons[button_pressed + 1] = buttons[button_pressed + 1] == off ? on : off;
+        }
+        if(button_pressed / 5 > 0) {
+          buttons[button_pressed - 5] = buttons[button_pressed - 5] == off ? on : off;
+        }
+        if(button_pressed / 5 < 4) {
+          buttons[button_pressed + 5] = buttons[button_pressed + 5] == off ? on : off;
+        }
+        
+        moves_remain--;
+      }
+      shuffle_flag = 0;
+    }
+
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    sprintf(buff, "Level: %d", level);
+    tft.drawString(buff, 8, 20, FONT_DEFAULT);
+
+    sprintf(buff, "Steps: %d", steps);
+    tft.drawString(buff, tft.width() / 2, 20, FONT_DEFAULT);
+
+    drawButtonMatrix(0, 64, tft.width(), tft.width(), buttons, 5, 5);
+
+    touchWaitPress();
+    button_pressed = touchCheckMatrix(0, 64, tft.width(), tft.width(), buttons, 5, 5);
+    if(button_pressed != -1) {
+      buttons[button_pressed] = buttons[button_pressed] == off ? on : off;
+      if(button_pressed % 5 != 0) {
+        buttons[button_pressed - 1] = buttons[button_pressed - 1] == off ? on : off;
+      }
+      if(button_pressed % 5 != 4) {
+        buttons[button_pressed + 1] = buttons[button_pressed + 1] == off ? on : off;
+      }
+      if(button_pressed / 5 > 0) {
+        buttons[button_pressed - 5] = buttons[button_pressed - 5] == off ? on : off;
+      }
+      if(button_pressed / 5 < 4) {
+        buttons[button_pressed + 5] = buttons[button_pressed + 5] == off ? on : off;
+      }
+      steps++;
+    }
+    drawButtonMatrix(0, 64, tft.width(), tft.width(), buttons, 5, 5);
+
+    // Проверка выигрыша
+    won_flag = 1;
+    for(i = 0; i < 25; i++) {
+      if(buttons[i] == on) won_flag = 0;
+    }
+    if(won_flag) {
+      sprintf(buff, "You won level %d in %d steps", level, steps);
+      drawInfo(buff);
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      level++;
+      shuffle_flag = 1;
+      steps = 0;
+      won_flag = 0;
+    }
+
     if(global_exit_flag) {
       global_exit_flag = 0;
       drawAppTitle("Exit");
@@ -2712,7 +2879,7 @@ void clearScreen() {
 void drawAppTitle(char *name) {
   tft.setTextColor(TFT_WHITE, TFT_BLUE);
   tft.fillRect(0, 0, tft.width(), 16, TFT_BLUE);
-  tft.drawString(name, 16, 0, FONT_SIZE);
+  tft.drawString(name, 16, 0, FONT_DEFAULT);
 }
 
 void drawError(char *message) {
@@ -2779,14 +2946,14 @@ int drawPrompt(char *message, char *user_input) {
   tft.fillRect(1, PROMPT_OFFSET_Y + 1, tft.width() - 2, 16, TFT_BLUE);
   // Заголовок
   tft.setTextColor(TFT_WHITE, TFT_BLUE);
-  tft.drawString(message, 16, PROMPT_OFFSET_Y + 1, FONT_SIZE);
+  tft.drawString(message, 16, PROMPT_OFFSET_Y + 1, FONT_DEFAULT);
   
   while(1) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     tft.fillRect(1, PROMPT_OFFSET_Y + 20, tft.width() - 2, 16, TFT_WHITE);
-    cursor_pos = tft.drawString(input, 8, PROMPT_OFFSET_Y + 20, FONT_SIZE);
+    cursor_pos = tft.drawString(input, 8, PROMPT_OFFSET_Y + 20, FONT_DEFAULT);
     tft.setTextColor(TFT_BLUE, TFT_WHITE);
-    tft.drawString("_", 8 + cursor_pos + 1, PROMPT_OFFSET_Y + 20, FONT_SIZE);
+    tft.drawString("_", 8 + cursor_pos + 1, PROMPT_OFFSET_Y + 20, FONT_DEFAULT);
 
     drawButtonMatrix(8, PROMPT_OFFSET_Y + 180, tft.width() - 8 * 2, 32, buttons, 3, 1);
 
@@ -2862,11 +3029,11 @@ void drawPopupWindow(char *title, char *message, char **buttons) {
   tft.fillRect(1, 121, 238, 16, TFT_BLUE);
   // Заголовок
   tft.setTextColor(TFT_WHITE, TFT_BLUE);
-  tft.drawString(title, 16, 121, FONT_SIZE);
+  tft.drawString(title, 16, 121, FONT_DEFAULT);
   
   // Надпись
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
-  tft.drawString(message, 8, 121 + 16, FONT_SIZE);
+  tft.drawString(message, 8, 121 + 16, FONT_DEFAULT);
 
   // Кнопки в один ряд
   drawButtonMatrix(8, 240 - 40, tft.width() - 8 * 2, 32, buttons, 3, 1);
@@ -2922,13 +3089,13 @@ void checkPasswordUntilCorrect(char *correct_password) {
     tft.fillRect(0, 16, tft.width(), 60, TFT_WHITE);
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     for(i = 0; i < strlen(user_input); i++) {
-      if(8 + i * tft.textWidth("*", FONT_SIZE + 2) < tft.width()) {
+      if(8 + i * tft.textWidth("*", FONT_BIG) < tft.width()) {
         tft.setTextColor(TFT_BLACK, TFT_WHITE);
-        tft.drawString("*", 8 + i * tft.textWidth("*", FONT_SIZE + 2), 58, FONT_SIZE + 2);
+        tft.drawString("*", 8 + i * tft.textWidth("*", FONT_BIG), 58, FONT_BIG);
       }
     }
-    tft.drawString("Owner info:", 8, 20, FONT_SIZE);
-    tft.drawString(owner_info, 8, 36, FONT_SIZE);
+    tft.drawString("Owner info:", 8, 20, FONT_DEFAULT);
+    tft.drawString(owner_info, 8, 36, FONT_DEFAULT);
 
     // Нарисовать кнопки
     drawButtonMatrix(8, 100 - 8, tft.width() - 8 * 2, 220, buttons, 3, 4);
@@ -2984,7 +3151,7 @@ void drawButtonMatrix(int left_x, int top_y, int width, int height, char **str, 
           }
           else {
             tft.setTextColor(TFT_BLACK, TFT_LIGHTGREY);
-            tft.drawCentreString(str[x + y * cols], left_x + (x + 0.5) * width / cols + 1, top_y + (y + 0.5) * height / rows - 8, FONT_SIZE);
+            tft.drawCentreString(str[x + y * cols], left_x + (x + 0.5) * width / cols + 1, top_y + (y + 0.5) * height / rows - 8, FONT_DEFAULT);
           }
         }
         else {
@@ -3056,7 +3223,7 @@ int touchCheckMatrix(int left_x, int top_y, int width, int height, char **str, i
                 }
                 else {
                   tft.setTextColor(TFT_BLACK, bg_color);
-                  tft.drawCentreString(str[x + y * cols], left_x + (x + 0.5) * width / cols + 1, top_y + (y + 0.5) * height / rows - 8, FONT_SIZE);
+                  tft.drawCentreString(str[x + y * cols], left_x + (x + 0.5) * width / cols + 1, top_y + (y + 0.5) * height / rows - 8, FONT_DEFAULT);
                 }
               prev_color = bg_color;
               }
@@ -3104,12 +3271,12 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
       // Если нужно показать [up]
       if(y == 0 && *offset > 0) {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
-        tft.drawString(up, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_SIZE);
+        tft.drawString(up, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
       }
       // Если нужно показать [down]
       else if(y == (rows_to_show - 1) && (*offset + rows_to_show) <= last_row) {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
-        tft.drawString(down, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_SIZE);
+        tft.drawString(down, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
       }
       else if(str[y + *offset]) {
         if(y + *offset == *selected) {
@@ -3119,7 +3286,7 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
         else {
           tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
         }
-        tft.drawString(str[y + *offset], left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_SIZE);
+        tft.drawString(str[y + *offset], left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
       }
       else {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
@@ -3250,7 +3417,7 @@ void touchWaitRelease() {
 }
 
 char touchCheckNowait() {
-  Serial.println(global_touch_length);
+  //Serial.println(global_touch_length);
   // Проверить касание без блокировки
   if(touchscreen.tirqTouched() && touchscreen.touched()) {
     if(!global_touch_present_flag) {

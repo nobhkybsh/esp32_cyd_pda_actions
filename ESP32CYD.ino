@@ -50,6 +50,7 @@
   доработка шрифтов, фоторезистор в информацию, особые кнопки у клавиатуры, индикатор выхода из приложения
 2026-05-14 Баг секундомера, баг таймера, дыхательный таймер, подключение к Wi-Fi
 2026-05-15 Выложил проект на гитхаб, ютуб, реддит; создание папки настроек после форматирования, константы, игра выключи свет, выигрыш в пятнашках
+2026-05-16 Прошивка через веб, исправлен порядок инициализации ФС
 
 Направления работы:
 - Русский шрифт маленький и средний, русская клавиатура
@@ -3521,6 +3522,7 @@ void setup() {
   int offset;
   char calibration_required = 0;
   char password_present;
+  char fs_present = 0;
 
   Serial.begin(115200);
 
@@ -3545,25 +3547,23 @@ void setup() {
   clearScreen();
 
   // Инициализация FFat
-  if (!FFat.begin(FORMAT_FS_IF_FAILED)) {
-    drawError("FFat mount failed");
-    if(drawConfirm("Format FFat?") == 0) {
-      FFat.format();
-      FFat.begin(FORMAT_FS_IF_FAILED);
-      FFat.mkdir("/Settings");
-    }
+  if (FFat.begin(FORMAT_FS_IF_FAILED)) {
+    fs_present = 1;
+  }
+  else {
+    fs_present = 0;
   }
 
   // Яркость
   brightness = 255;
-  if(read_file_to_buff("/Settings/Brightness", 79, buff)) {
+  if(fs_present && read_file_to_buff("/Settings/Brightness", 79, buff)) {
     sscanf(buff, "%d", &brightness);
     set_brightness(brightness);
   }
 
   // Калибровка сенсора, если нужно
   calibration_required = 1;
-  if(read_file_to_buff("/Settings/Calibration", 79, buff)) {
+  if(fs_present && read_file_to_buff("/Settings/Calibration", 79, buff)) {
     calibration_required = 0;
     ax = 0;
     sscanf(buff, "%f %f %f %f %f %f", &ax, &bx, &cx, &ay, &by, &cy);
@@ -3576,7 +3576,17 @@ void setup() {
     touch_calibration(1, NULL);
   }
 
-  // Тут можно было бы спросить пароль
+  // Тут можно задавать вопросы - сенсор откалиброван
+  if(!fs_present) {
+    drawError("FFat mount failed");
+    if(drawConfirm("Format FFat?") == 0) {
+      FFat.format();
+      FFat.begin(FORMAT_FS_IF_FAILED);
+      FFat.mkdir("/Settings");
+    }
+  }
+
+  // Тут можно спросить пароль
   if(read_file_to_buff("/Settings/Password", 79, buff)) {
     password_present = 1;
     for(offset = 0; offset < strlen(buff); offset++) {

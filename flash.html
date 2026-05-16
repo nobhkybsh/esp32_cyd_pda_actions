@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sau412 ESP32 CYD PDA Flash</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-weight: 300;
+        }
+
+        .context {
+            width: 100%;
+            position: absolute;
+            top: 20%;
+            transform: translateY(-20%);
+        }
+
+        .context h1 {
+            text-align: center;
+            color: #fff;
+            font-size: 50px;
+        }
+
+        #main,
+        #notSupported {
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="context">
+        <h1>sau412 ESP32 Cheap Yellow Display Pocket Digital Assistant Flash</h1>
+
+        <div id="main" style="display: none;">
+            <br>
+            <script type="module" src="https://unpkg.com/esp-web-tools@7.3.1/dist/web/install-button.js?module">
+            </script>
+            <esp-web-install-button id="installButton" manifest="webflash/manifest.json"></esp-web-install-button>
+            </br></br>
+            <span>NOTE: Make sure to close anything using your devices com port (e.g. Serial monitor)</span>
+        </div>
+        <div id="notSupported" style="display: none;">
+            Your browser does not support the Web Serial API. Try Chrome
+        </div>
+    </div>
+
+    <script>
+        if (navigator.serial) {
+            document.getElementById("notSupported").style.display = 'none';
+            document.getElementById("main").style.display = 'block';
+        } else {
+            document.getElementById("notSupported").style.display = 'block';
+            document.getElementById("main").style.display = 'none';
+        }
+    </script>
+</body>
+</html>

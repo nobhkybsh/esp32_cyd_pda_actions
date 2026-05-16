@@ -14,7 +14,10 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 * TFT_eSPI - install via arduino library manager
 * XPT2046_Touchscreen - install via arduino library manager
 
-# Installation
+# Installation via web flasher
+* https://sau412.github.io/esp32_cyd_pda/flash
+
+# Installation via Arduino
 * Install Arduino IDE
 * Install Required libraries (see above)
 * Replace User_Setup.h with a file from https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/DisplayConfig/User_Setup.h
@@ -26,10 +29,8 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32-2432s028r/ if you have troubles.
 
 # First run
-* Calibrate sensor screen
-* Go to Files - Format FFat if asked
-* Create Settings folder
-* Calibrate sensor again - calibration data stored in a /Settings/Calibration
+* Format internal storage as FFat when asked
+* Calibrate sensor screen - calibration data stored in a /Settings/Calibration
 * Done
 
 # Usage
@@ -56,6 +57,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Timer
 * Breathing timer
 * Brightness
+* Lights Off puzzle game
 
 # Touch sensor calibration
 It uses three-dots linear calibration.
@@ -64,7 +66,7 @@ You touch three specific dots (should not be on one line).
 
 Then it solves two systems of linear equations:
 
-<code>
+````
 Ax * xt1 + Bx * yt1 + Cx = xs1
 Ax * xt2 + Bx * yt2 + Cx = xs2
 Ax * xt3 + Bx * yt3 + Cx = xs3
@@ -76,7 +78,7 @@ Ay * xt3 + By * yt3 + Cy = ys3
 Ax, Bx, Cx, Ay, By, Cy - correction factors
 (xt1, yt1), (xt2, yt2), (xt3, yt3) - touchscreen points
 (xs1, ys1), (xs2, ys2), (xs3, ys3) - screen points
-</code>
+````
 
 It could fix parallelogram distortions.
 

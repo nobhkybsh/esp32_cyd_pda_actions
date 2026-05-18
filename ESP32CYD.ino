@@ -184,7 +184,9 @@ void files(char mode, char *io_buff);
 void keyboard(char mode, char *io_buff);
 void torch(char mode, char *io_buff);
 void draw(char mode, char *io_buff);
+#ifdef IS_WIFI_ENABLED
 void wifi(char mode, char *io_buff);
+#endif
 void screen_test(char mode, char *io_buff);
 void screensaver(char mode, char *io_buff);
 void touch_calibration(char mode, char *io_buff);
@@ -2945,7 +2947,6 @@ void edit_file(char *title, char *filename) {
 }
 
 void touch_calibration(char mode, char *io_buff) {
-  fs::File file;
   char buff[80];
   TS_Point p1, p2, p3;
   int offset = 10;
@@ -2967,6 +2968,8 @@ void touch_calibration(char mode, char *io_buff) {
   delay(1000);
   touchWaitPress();
   p1 = touchscreen.getPoint();
+  clearScreen();
+  tft.drawCentreString("Release", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   touchWaitRelease();
   delay(1000);  
 
@@ -2977,6 +2980,8 @@ void touch_calibration(char mode, char *io_buff) {
   delay(1000);
   touchWaitPress();
   p2 = touchscreen.getPoint();
+  clearScreen();
+  tft.drawCentreString("Release", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   touchWaitRelease();
   delay(1000);  
 
@@ -2987,6 +2992,8 @@ void touch_calibration(char mode, char *io_buff) {
   delay(1000);
   touchWaitPress();
   p3 = touchscreen.getPoint();
+  clearScreen();
+  tft.drawCentreString("Release", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
   touchWaitRelease();
   delay(1000);  
 
@@ -3004,20 +3011,21 @@ void touch_calibration(char mode, char *io_buff) {
 
   clearScreen();
   tft.drawCentreString("Done!", tft.width() / 2, tft.height() / 2 - 16, FONT_DEFAULT);
-  while(touchscreen.tirqTouched() && touchscreen.touched()) {
-    TS_Point p = touchscreen.getPoint();
-    touch_x = touchMapX(p.x, p.y);
-    touch_y = touchMapY(p.x, p.y);
-    tft.drawPixel(touch_x, touch_y, TFT_BLACK);
-  }
   touchWaitRelease();
+  touch_calibration_save();
+  delay(1000);
+}
+
+// Сохранение данных калибровки в ФС
+void touch_calibration_save() {
+  fs::File file;
+  char buff[80];
   file = FFat.open("/Settings/Calibration", FILE_WRITE);
   if(file) {
     sprintf(buff, "%f %f %f %f %f %f", ax, bx, cx, ay, by, cy);
     file.print(buff);
     file.close();
   }
-  delay(1000);
 }
 
 void fifteen(char mode, char *io_buff) {
@@ -3961,6 +3969,7 @@ void setup() {
       FFat.begin(FORMAT_FS_IF_FAILED);
       FFat.mkdir("/Settings");
     }
+    touch_calibration_save();
   }
 
   // Тут можно спросить пароль

@@ -43,6 +43,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 
 # Applications/Functions
 * File management (with viewing and editing support)
+* Notes
 * Touch sensor calibration
 * TFT screen test
 * Random number generator
@@ -58,6 +59,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Breathing timer
 * Brightness
 * Lights Off puzzle game
+* Life (Cellular automaton)
 
 # Touch sensor calibration
 It uses three-dots linear calibration.

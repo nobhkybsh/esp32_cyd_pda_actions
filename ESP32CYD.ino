@@ -51,7 +51,7 @@
 2026-05-14 Баг секундомера, баг таймера, дыхательный таймер, подключение к Wi-Fi
 2026-05-15 Выложил проект на гитхаб, ютуб, реддит; создание папки настроек после форматирования, константы, игра выключи свет, выигрыш в пятнашках
 2026-05-16 Прошивка через веб, исправлен порядок инициализации ФС
-2026-05-18 Заметки, клеточный автомат жизнь
+2026-05-18 Исправлен глюк с редактированием, заметки, клеточный автомат жизнь, лаунчер в две колонки
 
 Направления работы:
 - Русский шрифт маленький и средний, русская клавиатура
@@ -218,8 +218,8 @@ app_pointer apps[] = {
   timer,
   stopwatch_app,
   breathe,
-  //screen_test,
-  //screensaver,
+  screen_test,
+  screensaver,
   security,
   brightness_app,
   touch_calibration,
@@ -232,6 +232,7 @@ app_pointer apps[] = {
 void launcher(char mode, char *io_buff) {
   int touch_x;
   int touch_y;
+  char redraw_flag;
   if(mode == 0) {
     strcpy(io_buff, "Launcher");
     return;
@@ -240,23 +241,30 @@ void launcher(char mode, char *io_buff) {
   clearScreen();
   drawAppTitle("Launcher");
 
-  int i;
+  int row, col;
   char app_name[80];
   int apps_eol = 0;
-  for(i = 1; i < 20; i++) {
-    if(!apps_eol) {
-      if(apps[i]) {
-        apps[i](0, app_name);
-        tft.setTextColor(TFT_BLACK, TFT_WHITE);
-        tft.drawString(app_name, 8, i * 16, FONT_DEFAULT);
-      }
-      else {
-        apps_eol = i;
-      }
-    }
-  }
 
+  redraw_flag = 1;
   while(1) {
+    if(redraw_flag) {
+      for(col = 0; col < 2; col++) {
+        for(row = 0; row < 19; row++) {
+          if(!apps_eol) {
+            if(apps[row + col * 19 + 1]) {
+              apps[row + col * 19 + 1](0, app_name);
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+              tft.drawString(app_name, 1 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+            }
+            else {
+              apps_eol = row + col * 19 + 1;
+            }
+          }
+        }
+      }
+      redraw_flag = 0;
+    }
+
     global_exit_flag = 0;
     touchWaitPress();
 
@@ -264,21 +272,22 @@ void launcher(char mode, char *io_buff) {
     touch_x = touchMapX(p.x, p.y);
     touch_y = touchMapY(p.x, p.y);
 
-    i = touch_y / 16;
+    row = (touch_y - 16) / 16;
+    col = touch_x / (tft.width() / 2);
 
-    if(i > 0 && i < apps_eol) {
-      apps[i](0, app_name);
-      tft.fillRect(0, i * 16, tft.width(), 16, TFT_BLUE);
+    if(row + col * 19 + 1 < apps_eol) {
+      apps[row + col * 19 + 1](0, app_name);
+      tft.fillRect(col * tft.width() / 2, (row + 1) * 16, tft.width() / 2, 16, TFT_BLUE);
       tft.setTextColor(TFT_WHITE, TFT_BLUE);
-      tft.drawString(app_name, 8, i * 16, FONT_DEFAULT);
+      tft.drawString(app_name, 1 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
       delay(100);
       touchWaitRelease();
 
-      tft.fillRect(0, i * 16, tft.width(), 16, TFT_WHITE);
+      tft.fillRect(col * tft.width() / 2, (row + 1) * 16, tft.width() / 2, 16, TFT_WHITE);
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString(app_name, 8, i * 16, FONT_DEFAULT);
+      tft.drawString(app_name, 1 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
 
-      apps[i](1, NULL);
+      apps[row + col * 19 + 1](1, NULL);
       break;
     }
   }

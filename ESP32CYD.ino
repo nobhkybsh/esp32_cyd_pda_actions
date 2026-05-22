@@ -52,6 +52,10 @@
 2026-05-15 Выложил проект на гитхаб, ютуб, реддит; создание папки настроек после форматирования, константы, игра выключи свет, выигрыш в пятнашках
 2026-05-16 Прошивка через веб, исправлен порядок инициализации ФС
 2026-05-18 Исправлен глюк с редактированием, заметки, клеточный автомат жизнь, лаунчер в две колонки
+2026-05-19 Информация о сети
+2026-05-21 Исправил баг со списком сетей вай-фай, баг со списком заметок, возможность отключиться от Wi-Fi сети,
+  информационный стенд, I2C сканер
+2026-05-22 Исправлен баг с календарём
 
 Направления работы:
 - Русский шрифт маленький и средний, русская клавиатура
@@ -64,7 +68,7 @@
 - Больше настроек
 */
 
-//#define IS_WIFI_ENABLED
+#define IS_WIFI_ENABLED
 
 #include <SPI.h>
 #include <TFT_eSPI.h>
@@ -72,11 +76,13 @@
 
 #include "FS.h"
 #include "FFat.h"
+#include <Wire.h>
 
 #ifdef IS_WIFI_ENABLED
 
 #include "WiFi.h"
 #include <HTTPClient.h>
+#include <ESPping.h>
 
 #endif
 
@@ -110,6 +116,9 @@ XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 #define LED_RED 4
 #define LED_GREEN 16
 #define LED_BLUE 17
+
+#define I2C_SDA 27 
+#define I2C_SCL 22
 
 char enter[] = {
   8, 8,
@@ -177,6 +186,11 @@ char global_touch_present_flag;
 char global_exit_flag;
 int brightness;
 
+// После подключения к вай-фаю можно узнать текущее время
+long unixtime_retrieved = 0;
+long unixtime_retrieved_millis = 0;
+long timezone = 3 * 3600;
+
 void launcher(char mode, char *io_buff);
 void calculator(char mode, char *io_buff);
 void system_info(char mode, char *io_buff);
@@ -186,6 +200,7 @@ void torch(char mode, char *io_buff);
 void draw(char mode, char *io_buff);
 #ifdef IS_WIFI_ENABLED
 void wifi(char mode, char *io_buff);
+void clock(char mode, char *io_buff);
 #endif
 void screen_test(char mode, char *io_buff);
 void screensaver(char mode, char *io_buff);
@@ -201,6 +216,8 @@ void brightness_app(char mode, char *io_buff);
 void lights_off(char mode, char *io_buff);
 void notes(char mode, char *io_buff);
 void life(char mode, char *io_buff);
+void i2c_scanner(char mode, char *io_buff);
+
 
 typedef void (*app_pointer) (char mode, char *io_buff);
 
@@ -214,6 +231,7 @@ app_pointer apps[] = {
   draw,
 #ifdef IS_WIFI_ENABLED
   wifi,
+  clock,
 #endif
   counter,
   random_numbers,
@@ -228,6 +246,7 @@ app_pointer apps[] = {
   fifteen,
   lights_off,
   life,
+  i2c_scanner,
   NULL
 };
 
@@ -946,13 +965,13 @@ void notes(char mode, char *io_buff) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     tft.drawString("Select note:", 1, 16, FONT_DEFAULT);
 
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 64, notes_list, 16, &file_offset, &file_selected);
-    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 64, notes_list, 16, &file_offset, &file_selected);
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, notes_list, 15, &file_offset, &file_selected);
+    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 72, notes_list, 15, &file_offset, &file_selected);
     drawButtonMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
 
     touchWaitPress();
 
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 64, notes_list, 16, &file_offset, &file_selected);
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, notes_list, 15, &file_offset, &file_selected);
     button_pressed = touchCheckMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
     if(button_pressed != -1) {
       rename_note_flag = 0;
@@ -2277,6 +2296,34 @@ void draw(char mode, char *io_buff) {
 #define WIFI_MAX_NETWORKS 128
 
 void wifi(char mode, char *io_buff) {
+  int wifi_status;
+
+  if(mode == 0) {
+    strcpy(io_buff, "Wi-Fi");
+    return;
+  }
+
+  WiFi.waitForConnectResult(10);
+
+  while(1) {
+    wifi_status = WiFi.status();
+    if(wifi_status == WL_CONNECTED) {
+      wifi_network_info();
+    }
+    else {
+      wifi_select_network();
+    }
+    if(global_exit_flag) {
+      global_exit_flag = 0;
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+void wifi_select_network() {
   char **networks;
   int button_pressed;
   int networks_found;
@@ -2295,13 +2342,8 @@ void wifi(char mode, char *io_buff) {
     NULL
   };
 
-  if(mode == 0) {
-    strcpy(io_buff, "Wi-Fi");
-    return;
-  }
-
   networks = (char**)malloc(WIFI_MAX_NETWORKS * sizeof(char *));
-  for(i = 0; i < WIFI_MAX_NETWORKS; i++) {
+  for(network_index = 0; network_index < WIFI_MAX_NETWORKS; network_index++) {
     networks[network_index] = NULL;
   }
 
@@ -2312,10 +2354,11 @@ void wifi(char mode, char *io_buff) {
 
   rescan_flag = 1;
   while(1) {
+    tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
     if(rescan_flag) {
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
       tft.drawString("Scanning...      ", 0, 16, FONT_DEFAULT);
-      for(i = 0; i < WIFI_MAX_NETWORKS; i++) {
+      for(network_index = 0; network_index < WIFI_MAX_NETWORKS; network_index++) {
         if(networks[network_index]) {
           free(networks[network_index]);
         }
@@ -2326,11 +2369,13 @@ void wifi(char mode, char *io_buff) {
       networks_found = WiFi.scanNetworks();
       for (i = 0; i < networks_found; i++) {
         network_listed = 0;
+        // Ищем сети с таким же названием
         for(network_index = 0; network_index < networks_unique; network_index++) {
           if(!strcmp(networks[network_index], WiFi.SSID(i).c_str())) {
             network_listed = 1;
           }
         }
+        // Если сеть ещё не фигурировала - добавялем в список
         if(network_listed == 0) {
           Serial.println(WiFi.SSID(i).c_str());
           networks[networks_unique] = (char *)malloc(80 * sizeof(char));
@@ -2338,18 +2383,19 @@ void wifi(char mode, char *io_buff) {
           networks_unique++;
         }
       }
-      tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString("Select network:", 0, 16, FONT_DEFAULT);
       rescan_flag = 0;
     }
 
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 64, networks, 16, &network_offset, &network_selected);
-    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 64, networks, 16, &network_offset, &network_selected);
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.drawString("Select network:", 0, 16, FONT_DEFAULT);
+
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, networks, 15, &network_offset, &network_selected);
+    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 72, networks, 15, &network_offset, &network_selected);
 
     drawButtonMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 2, 1);
     
     touchWaitPress();
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 64, networks, 16, &network_offset, &network_selected);
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, networks, 15, &network_offset, &network_selected);
 
     button_pressed = touchCheckMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 2, 1);
     if(button_pressed != -1) {
@@ -2364,11 +2410,9 @@ void wifi(char mode, char *io_buff) {
         } while (wifi_status == WL_DISCONNECTED || wifi_status == WL_IDLE_STATUS);
         
         if(wifi_status == WL_CONNECTED) {
+          WiFi.setAutoReconnect(true);
           drawInfo("Connected");
-          Serial.println(WiFi.localIP());
-          show_current_time();
-          drawInfo("Starting web server");
-          //web_server();
+          return;
         }
         else if(wifi_status == WL_NO_SSID_AVAIL) {
           drawError("SSID unavailable");
@@ -2395,6 +2439,347 @@ void wifi(char mode, char *io_buff) {
     }
 
     if(global_exit_flag) {
+      // Флаг не сбрасываем, так как не основное приложение
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+void wifi_network_info() {
+  int wifi_status;
+  int screen_offset;
+  int button_pressed;
+  int prev_update_millis = 0;
+  char buff[80];
+  char buff2[80];
+  IPAddress ip;
+
+  char *buttons[] = {
+    "Ping", "DNS", "Disconnect",
+  };
+
+  clearScreen();
+  drawAppTitle("Wi-Fi");
+
+  while(1) {
+    if(millis() - prev_update_millis > 1000) {
+      tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      screen_offset = 20;
+      sprintf(buff, "SSID: %s  ", WiFi.SSID());
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      sprintf(buff, "BSSID: %02x:%02x:%02x:%02x:%02x:%02x  ", WiFi.BSSID()[0], WiFi.BSSID()[1], WiFi.BSSID()[2], WiFi.BSSID()[3], WiFi.BSSID()[4], WiFi.BSSID()[5]);
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      sprintf(buff, "RSSI: %d (%d%%)  ", WiFi.RSSI(), constrain(2 * (WiFi.RSSI() + 100), 0, 100));
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      sprintf(buff, "My MAC: %02x:%02x:%02x:%02x:%02x:%02x  ", WiFi.macAddress()[0], WiFi.macAddress()[1], WiFi.macAddress()[2], WiFi.macAddress()[3], WiFi.macAddress()[4], WiFi.macAddress()[5]);
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      sprintf(buff, "IP: %s  ", WiFi.localIP().toString());
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      sprintf(buff, "Netmask: %s  ", WiFi.subnetMask().toString());
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      // Какой-то глюк с этим адресом
+      //sprintf(buff, "Broadcast: %s", WiFi.broadcastIP().toString());
+      //tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      //screen_offset += 16;
+      sprintf(buff, "Gateway: %s  ", WiFi.gatewayIP().toString());
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+      sprintf(buff, "DNS: %s  ", WiFi.dnsIP().toString());
+      tft.drawString(buff, 8, screen_offset, FONT_DEFAULT);
+      screen_offset += 16;
+
+      drawButtonMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 3, 1);
+
+      prev_update_millis = millis();
+    }
+    if(!touchCheckNowait()) continue;
+    touchWaitPress();
+
+    button_pressed = touchCheckMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 3, 1);
+    if(button_pressed != -1) {
+      // Ping
+      if(button_pressed == 0) {
+        strcpy(buff, "");
+        drawPrompt("IP to ping", buff);
+        if(strcmp(buff, "")) {
+          if(Ping.ping(buff, 3)) {
+            sprintf(buff2, "Average of 3 pings is %d ms", Ping.averageTime());
+          }
+          else {
+            sprintf(buff2, "Error");
+          }
+          drawInfo(buff2);
+        }
+      }
+      // Resolve host
+      else if(button_pressed == 1) {
+        strcpy(buff, "");
+        drawPrompt("Host to resolve", buff);
+        if(strcmp(buff, "")) {
+          WiFi.hostByName(buff, ip);
+          drawInfo((char *)ip.toString().c_str());
+        }
+      }
+      // Disconnect
+      else if(button_pressed == 2) {
+        WiFi.setAutoReconnect(false);
+        WiFi.disconnect();
+        return;
+      }
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+    }
+
+    if(global_exit_flag) {
+      // Флаг не сбрасываем, так как не основное приложение
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+void retrieve_current_time() {
+  HTTPClient http;
+  int httpResponseCode;
+  char buff[80];
+  http.begin("http://109.230.144.68/cyd/unixtime.php");
+  httpResponseCode = http.GET();
+  if(httpResponseCode > 0) {
+    strcpy(buff, http.getString().c_str());
+    sscanf(buff, "%ld", &unixtime_retrieved);
+    unixtime_retrieved_millis = millis();
+  }
+  http.end();
+}
+
+#define CLOCK_UPDATE_SCREEN_INTERVAL 1000
+#define CLOCK_UPDATE_DATA_INTERVAL 600000
+
+void clock(char mode, char *io_buff) {
+  int wifi_status;
+  char buff[80];
+  char weather[80];
+  char rates[80];
+  HTTPClient http;
+  int httpResponseCode;
+  long unix_timestamp;
+  int hour;
+  int min;
+  int sec;
+  long days_since_epoch;
+  long days_remain;
+  int day_of_week;
+  int year;
+  int month;
+  int day;
+  int prev_day;
+  int moon_day;
+  int cal_dow;
+  int cal_day;
+  int cal_row;
+  int cal_col;
+  char is_lap_year;
+  long prev_update_millis = 0;
+  long prev_update_data_millis = -CLOCK_UPDATE_DATA_INTERVAL;
+  char *day_of_week_name[] = {
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
+  };
+  char *day_of_week_short[] = {
+    "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"
+  };
+  char *month_name[] = {
+    "", "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  };
+
+  if(mode == 0) {
+    strcpy(io_buff, "Clock");
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Clock");
+
+  wifi_status = WiFi.status();
+  if(wifi_status != WL_CONNECTED) {
+    //drawError("Wi-Fi connection required");
+  }
+
+  strcpy(weather, "");
+  strcpy(rates, "");
+
+  while(1) {
+    // Обновление данных раз в десять минут
+    if(millis() - prev_update_data_millis > CLOCK_UPDATE_DATA_INTERVAL) {
+      prev_update_data_millis = millis();
+
+      if(unixtime_retrieved == 0) {
+        retrieve_current_time();
+      }
+
+      // Погода
+      http.begin("http://109.230.144.68/cyd/weather.php");
+      httpResponseCode = http.GET();
+      if(httpResponseCode > 0) {
+        strcpy(weather, http.getString().c_str());
+      }
+      else {
+        strcpy(weather, "Weather unknown");
+      }
+      http.end();
+
+      // Курсы валют
+      http.begin("http://109.230.144.68/cyd/rates.php");
+      httpResponseCode = http.GET();
+      if(httpResponseCode > 0) {
+        strcpy(rates, http.getString().c_str());
+      }
+      else {
+        strcpy(rates, "Rates unknown");
+      }
+      http.end();
+
+      tft.fillRect(0, 242, tft.width(), tft.height() - 242, TFT_WHITE);
+    }
+    if(millis() - prev_update_millis > CLOCK_UPDATE_SCREEN_INTERVAL) {
+      prev_update_millis = millis();
+
+      unix_timestamp = unixtime_retrieved + (millis() - unixtime_retrieved_millis) / 1000;
+      //unix_timestamp = unixtime_retrieved + (millis() - unixtime_retrieved_millis) * 86.4;
+
+      // Дней с начала эпохи
+      days_since_epoch = (unix_timestamp + timezone) / 86400;
+      // День недели
+      day_of_week = (days_since_epoch + 3) % 7;
+      // Высчитываем дату
+      days_remain = days_since_epoch;
+      year = 1970;
+      month = 1;
+      day = 1;
+      while(days_remain > 0) {
+        // Високосные годы
+        is_lap_year = 0;
+        if(year % 4 == 0 && (year % 100 == 0 || year % 400 != 0)) {
+          is_lap_year = 1;
+        }
+        if(is_lap_year && days_remain >= 366) {
+          days_remain -= 366;
+          year++;
+          continue;
+        }
+        // Обычные годы
+        if(!is_lap_year && days_remain >= 365) {
+          days_remain -= 365;
+          year++;
+          continue;
+        }
+        Serial.println(days_remain);
+        if((month == 1 || month == 3 || month == 5 || month == 7 || month == 8 || month == 10 || month == 12) && days_remain >= 31) {
+          days_remain -= 31;
+          month++;
+          continue;
+        }
+        if((month == 4 || month == 6 || month == 9 || month == 11) && days_remain >= 30) {
+          days_remain -= 30;
+          month++;
+          continue;
+        }
+        if(month == 2 && days_remain >= 29 & is_lap_year) {
+          days_remain -= 29;
+          month++;
+          continue;
+        }
+        if(month == 2 && days_remain >= 28 & !is_lap_year) {
+          days_remain -= 28;
+          month++;
+          continue;
+        }
+        day += days_remain;
+        break;
+      }
+
+      hour = ((unix_timestamp + timezone) / 3600) % 24;
+      min = ((unix_timestamp + timezone) / 60) % 60;
+      sec = (unix_timestamp + timezone) % 60;
+
+      moon_day = fmod(25 + days_since_epoch, 29.53059);
+
+      // Если день изменился - очистить экран
+      if(prev_day != day) {
+        tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      }
+      prev_day = day;
+
+      // Выводим всё
+      tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      sprintf(buff, " %d:%02d:%02d ", hour, min, sec);
+      tft.drawCentreString(buff, tft.width() / 2, 35, FONT_BIGGER);
+
+      tft.drawCentreString(day_of_week_name[day_of_week], tft.width() / 2, 70, FONT_BIG);
+      sprintf(buff, "%s, %04d, %d", month_name[month], year, day);
+      tft.drawCentreString(buff, tft.width() / 2, 90, FONT_BIG);
+
+      // Календарь на текущий месяц
+      cal_day = 1;
+      cal_dow = (day_of_week + 7 - (day - 1) % 7) % 7;
+      for(cal_row = 0; cal_row < 7; cal_row++) {
+        for(cal_col = 0; cal_col < 7; cal_col++) {
+          if(cal_row == 0) {
+            strcpy(buff, day_of_week_short[cal_col]);
+          }
+          else {
+            if(cal_row == 1 && cal_col < cal_dow) continue;
+            sprintf(buff, "%d", cal_day);
+            if(month == 1 || month == 3 || month == 5 || month == 7 || month == 8 || month == 10 || month == 12) {
+              if(cal_day > 31) break;
+            }
+            if(month == 2 || month == 4 || month == 6 || month == 9 || month == 11) {
+              if(cal_day > 30) break;
+            }
+            if(is_lap_year && month == 2 && cal_day > 29) break;
+            if(!is_lap_year && month == 2 && cal_day > 28) break;
+            cal_day++;
+          }
+          if((day + 1) == cal_day) {
+            tft.fillRect(cal_col * tft.width() / 7, 130 + cal_row * 16, tft.width() / 7, 16, TFT_BLUE);
+            tft.setTextColor(TFT_WHITE, TFT_BLUE);
+          }
+          else {
+            tft.setTextColor(TFT_BLACK, TFT_WHITE);
+          }
+          tft.drawCentreString(buff, (cal_col + 0.5) * tft.width() / 7, 130 + cal_row * 16, FONT_DEFAULT);
+        }
+      }
+
+      // Лунный день
+      tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      sprintf(buff, "Moon day: %d", moon_day);
+      tft.drawCentreString(buff, tft.width() / 2, 242, FONT_DEFAULT);
+      tft.drawCentreString(weather, tft.width() / 2, 258, FONT_DEFAULT);
+      tft.drawCentreString(rates, tft.width() / 2, 274, FONT_DEFAULT);
+
+      // До следующего обновления данных
+      tft.setTextColor(TFT_LIGHTGREY, TFT_WHITE);
+      sprintf(buff, "  Next update in %d min %d sec  ",
+        (prev_update_data_millis + CLOCK_UPDATE_DATA_INTERVAL - millis()) / 60000,
+        ((prev_update_data_millis + CLOCK_UPDATE_DATA_INTERVAL - millis()) / 1000) % 60
+      );
+      tft.drawCentreString(buff, tft.width() / 2, tft.height() - 16, FONT_DEFAULT);
+    }
+    
+    if(!touchCheckNowait()) continue;
+
+    if(global_exit_flag) {
       global_exit_flag = 0;
       drawAppTitle("Exit");
       touchWaitRelease();
@@ -2404,24 +2789,102 @@ void wifi(char mode, char *io_buff) {
   }
 }
 
-void show_current_time() {
-  HTTPClient http;
-  int httpResponseCode;
-  char buff[800];
-  http.begin("http://109.230.144.68/cyd/time.php");
-  //http.begin("http://example.com/");
-  httpResponseCode = http.GET();
-  if(httpResponseCode > 0) {
-    strcpy(buff, http.getString().c_str());
-    drawInfo(buff);
-  }
-  else {
-    drawError("Time fetching failed");
-  }
-  http.end();
-}
-
 #endif
+
+#define I2C_MAX_DEVICES 127
+
+void i2c_scanner(char mode, char *io_buff) {
+  char **devices;
+  int button_pressed;
+  int device_index;
+  int device_found;
+  int device_offset = 0;
+  int device_selected = 0;
+  int i;
+  int error;
+  char rescan_flag;
+  char *buttons[] = {
+    "Scan", "Clear",
+    NULL
+  };
+
+  if(mode == 0) {
+    strcpy(io_buff, "I2C Scanner");
+    return;
+  }
+
+  devices = (char**)malloc(I2C_MAX_DEVICES * sizeof(char *));
+  for(device_index = 0; device_index < I2C_MAX_DEVICES; device_index++) {
+    devices[device_index] = NULL;
+  }
+
+  clearScreen();
+  drawAppTitle("I2C Scanner");
+
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  rescan_flag = 1;
+  while(1) {
+    if(rescan_flag) {
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      tft.drawString("Scanning...      ", 1, 16, FONT_DEFAULT);
+
+      for(device_index = 0; device_index < I2C_MAX_DEVICES; device_index++) {
+        if(devices[device_index]) {
+          free(devices[device_index]);
+        }
+        devices[device_index] = NULL;
+      }
+
+      device_found = 0;
+      for(device_index = 1; device_index < 127; device_index++) {
+        Wire.beginTransmission(device_index);
+        error = Wire.endTransmission();
+        if(error == 0) {
+          devices[device_found] = (char*)malloc(80 * sizeof(char));
+          sprintf(devices[device_found], "0x%02x", device_index);
+          device_found++;
+        }
+      }
+      rescan_flag = 0;
+    }
+
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.drawString("Found devices:", 1, 16, FONT_DEFAULT);
+
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, devices, 15, &device_offset, &device_selected);
+    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 72, devices, 15, &device_offset, &device_selected);
+
+    drawButtonMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 2, 1);
+    
+    touchWaitPress();
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, devices, 15, &device_offset, &device_selected);
+
+    button_pressed = touchCheckMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 2, 1);
+    if(button_pressed != -1) {
+      if(button_pressed == 0) {
+        rescan_flag = 1;
+      }
+      else if(button_pressed == 1) {
+        for(device_index = 0; device_index < I2C_MAX_DEVICES; device_index++) {
+          if(devices[device_index]) {
+            free(devices[device_index]);
+          }
+          devices[device_index] = NULL;
+        }
+      }
+    }
+
+    if(global_exit_flag) {
+      // Флаг не сбрасываем, так как не основное приложение
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
 
 void screen_test(char mode, char *io_buff) {
   int i;
@@ -2684,16 +3147,11 @@ void edit_file(char *title, char *filename) {
   drawAppTitle(title);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
-  Serial.print("Edit file: ");
-  Serial.println(filename);
-
-  Serial.println("Open file");
   file = FFat.open(filename);
   if(!file) {
     drawError("Cannot open file");
     return;
   }
-  Serial.println("Check is dir");
   if(file.isDirectory()) {
     drawError("Cannot edit directory");
     return;
@@ -3702,10 +4160,7 @@ int touchCheckList(int left_x, int top_y, int width, int height, char **str, int
   p = touchscreen.getPoint();
   touch_x = touchMapX(p.x, p.y);
   touch_y = touchMapY(p.x, p.y);
-Serial.print("touch_x = ");
-Serial.println(touch_x);
-Serial.print("touch_y = ");
-Serial.println(touch_y);
+
   // Для прокрутки нужно знать количество строк
   for(last_row = 0; str[last_row] != NULL; last_row++) {}
   last_row--;
@@ -3985,6 +4440,9 @@ void setup() {
     }
   }
 
+#ifdef IS_WIFI_ENABLED
+  WiFi.begin();
+#endif
 /*
   int i, j;
   //char buff[10];

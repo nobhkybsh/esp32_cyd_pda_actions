@@ -60,6 +60,8 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Brightness
 * Lights Off puzzle game
 * Life (Cellular automaton)
+* Wi-Fi connection
+* Clock stand
 
 # Touch sensor calibration
 It uses three-dots linear calibration.

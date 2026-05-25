@@ -27,6 +27,14 @@
 - Таймер
 - Яркость
 - Секундомер
+- Заметки
+- Жизнь (клеточный автомат)
+- I2C сканер
+- Часы
+- Неточные часы
+- Подключение к вай-фаю
+- Гофер браузер
+- Погода (с настройкой координат)
 
 Лог разработки:
 2026-03-11 Лаунчер и статическая информация о системе
@@ -55,18 +63,32 @@
 2026-05-19 Информация о сети
 2026-05-21 Исправил баг со списком сетей вай-фай, баг со списком заметок, возможность отключиться от Wi-Fi сети,
   информационный стенд, I2C сканер
-2026-05-22 Исправлен баг с календарём
+2026-05-22 Исправлен баг с календарём, неточные часы
+2026-05-23 Исправлены баги гофер-браузера, приложение книги
+Sketch uses 1229450 bytes (93%) of program storage space. Maximum is 1310720 bytes.
+2026-05-25 Исправлен баг когда сеть по умолчанию вай-фай недоступна, погода и координаты
 
 Направления работы:
-- Русский шрифт маленький и средний, русская клавиатура
-- Вай-фай сервисы
-- PIM-приложения
-- Поддержка SD
-- Больше приложений
-- Больше игр
-- Больше заставок
-- Больше настроек
+- Русский шрифт маленький и средний
+- Русская клавиатура
+- Вывод русского из UTF-8
+- Значки приложений
+- Контакты
+- Расписание (календарь)
+- Список дел
+- Расходы
+- Рисование с сохранением
+- Простой чат
+- Часы (с настройкой времени)
+Затем игры:
+- Змейка
+- Тетрис
+- Карточки на память (как Masterbrain)
+- Повтор последовательности
+- Турецкий платок
 */
+
+//#define ONE_FUNCTION_MODE
 
 #define IS_WIFI_ENABLED
 
@@ -106,7 +128,7 @@ XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 #define SCREEN_WIDTH tft.width()
 #define SCREEN_HEIGHT tft.height()
 
-#define FONT_TRUETYPE 1
+#define FONT_MONOSPACE 1
 #define FONT_DEFAULT 2
 #define FONT_BIG 4
 #define FONT_BIGGER 6
@@ -184,6 +206,8 @@ int global_touch_x;
 int global_touch_y;
 char global_touch_present_flag;
 char global_exit_flag;
+float global_lat;
+float global_lon;
 int brightness;
 
 // После подключения к вай-фаю можно узнать текущее время
@@ -192,16 +216,22 @@ long unixtime_retrieved_millis = 0;
 long timezone = 3 * 3600;
 
 void launcher(char mode, char *io_buff);
+#ifndef ONE_FUNCTION_MODE
 void calculator(char mode, char *io_buff);
 void system_info(char mode, char *io_buff);
 void files(char mode, char *io_buff);
 void keyboard(char mode, char *io_buff);
 void torch(char mode, char *io_buff);
 void draw(char mode, char *io_buff);
+#endif
 #ifdef IS_WIFI_ENABLED
 void wifi(char mode, char *io_buff);
-void clock(char mode, char *io_buff);
+void dashboard(char mode, char *io_buff);
+void fuzzy_clock(char mode, char *io_buff);
+void gopher(char mode, char *io_buff);
+void weather(char mode, char *io_buff);
 #endif
+#ifndef ONE_FUNCTION_MODE
 void screen_test(char mode, char *io_buff);
 void screensaver(char mode, char *io_buff);
 void touch_calibration(char mode, char *io_buff);
@@ -215,24 +245,32 @@ void breathe(char mode, char *io_buff);
 void brightness_app(char mode, char *io_buff);
 void lights_off(char mode, char *io_buff);
 void notes(char mode, char *io_buff);
+void books(char mode, char *io_buff);
 void life(char mode, char *io_buff);
 void i2c_scanner(char mode, char *io_buff);
-
+#endif
 
 typedef void (*app_pointer) (char mode, char *io_buff);
 
 app_pointer apps[] = {
   launcher,
+#ifndef ONE_FUNCTION_MODE
   calculator,
   files,
   notes,
+  books,
   system_info,
   torch,
   draw,
+#endif
 #ifdef IS_WIFI_ENABLED
   wifi,
-  clock,
+  dashboard,
+  fuzzy_clock,
+  gopher,
+  weather,
 #endif
+#ifndef ONE_FUNCTION_MODE
   counter,
   random_numbers,
   timer,
@@ -247,6 +285,7 @@ app_pointer apps[] = {
   lights_off,
   life,
   i2c_scanner,
+#endif
   NULL
 };
 
@@ -1062,6 +1101,130 @@ void notes(char mode, char *io_buff) {
         }
       }
       free(notes_list);
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+#define BOOKS_COUNT_MAX 1024
+#define BOOKS_PATH "/Books"
+
+void books(char mode, char *io_buff) {
+  fs::File current_dir;
+  fs::File file;
+  int button_pressed;
+  int file_offset;
+  int file_selected;
+  int i;
+  int offset;
+  char buff[80];
+  char buff2[80];
+  char buff3[80];
+  char byte;
+  char update_list_flag = 1;
+  char rename_note_flag = 0;
+  char *buttons[] = {
+    "View", "Rename", "Delete",
+    NULL
+  };
+  char **books_list = NULL;
+  
+  if(mode == 0) {
+    strcpy(io_buff, "Books");
+    return;
+  }
+
+  // Резервируем память, инициализируем
+  books_list = (char **)malloc(NOTES_COUNT_MAX * sizeof(char *));
+  for(i = 0; i < NOTES_COUNT_MAX; i++) {
+    books_list[i] = NULL;
+  }
+
+  update_list_flag = 1;
+  while(1) {
+    // Обновляем список файлов если нужно
+    if(update_list_flag) {
+      clearScreen();
+      drawAppTitle("Books");
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      offset = 0;
+      // Освобождаем память
+      for(i = 0; i < NOTES_COUNT_MAX; i++) {
+        if(books_list[i]) {
+          free(books_list[i]);
+        }
+        books_list[i] = NULL;
+      }
+      // Получаем список файлов
+      current_dir = FFat.open(BOOKS_PATH);
+      if(!current_dir) {
+        FFat.mkdir(BOOKS_PATH);
+        current_dir = FFat.open(BOOKS_PATH);
+        if(!current_dir) {
+          drawError("Cannot open notes path");
+          return;
+        }
+      }
+      while(file = current_dir.openNextFile()) {
+        // Пропускаем папки
+        if(file.isDirectory()) continue;
+        books_list[offset] = (char *)malloc((strlen(file.name()) + 1) * sizeof(char));
+        strcpy(books_list[offset], file.name());
+        offset++;
+      }
+      update_list_flag = 0;
+    }
+
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.drawString("Select book:", 1, 16, FONT_DEFAULT);
+
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, books_list, 15, &file_offset, &file_selected);
+    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 72, books_list, 15, &file_offset, &file_selected);
+    drawButtonMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
+
+    touchWaitPress();
+
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, books_list, 15, &file_offset, &file_selected);
+    button_pressed = touchCheckMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
+    if(button_pressed != -1) {
+      rename_note_flag = 0;
+      if(button_pressed == 0) {
+        // Читаем книгу
+        sprintf(buff, "%s/%s", BOOKS_PATH, books_list[file_selected]);
+        view_file(books_list[file_selected], buff);
+      }
+      else if(button_pressed == 1) {
+        // Переименовываем
+        sprintf(buff, "%s/%s", BOOKS_PATH, books_list[file_selected]);
+        strcpy(buff2, books_list[file_selected]);
+        drawPrompt("New name", buff2);
+        if(strlen(buff2) > 0 && strcmp(buff2, books_list[file_selected])) {
+          sprintf(buff3, "%s/%s", BOOKS_PATH, buff2);
+          FFat.rename(buff, buff3);
+        }
+      }
+      else if(button_pressed == 2) {
+        // Удаляем
+        if(drawConfirm("Are you sure to delete book?") == 0) {
+          // Удаляем заметку с соответствующим названием
+          sprintf(buff, "%s/%s", BOOKS_PATH, books_list[file_selected]);
+          FFat.remove(buff);
+        }
+      }
+      update_list_flag = 1;
+    }
+
+    if(global_exit_flag) {
+      global_exit_flag = 0;
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      for(i = 0; i < NOTES_COUNT_MAX; i++) {
+        if(books_list[i]) {
+          free(books_list[i]);
+        }
+      }
+      free(books_list);
       return;
     }
     touchWaitRelease();
@@ -2350,6 +2513,8 @@ void wifi_select_network() {
   clearScreen();
   drawAppTitle("Wi-Fi");
 
+  WiFi.setAutoReconnect(false);
+  WiFi.disconnect();
   WiFi.STA.begin();
 
   rescan_flag = 1;
@@ -2565,7 +2730,7 @@ void retrieve_current_time() {
 #define CLOCK_UPDATE_SCREEN_INTERVAL 1000
 #define CLOCK_UPDATE_DATA_INTERVAL 600000
 
-void clock(char mode, char *io_buff) {
+void dashboard(char mode, char *io_buff) {
   int wifi_status;
   char buff[80];
   char weather[80];
@@ -2603,16 +2768,17 @@ void clock(char mode, char *io_buff) {
   };
 
   if(mode == 0) {
-    strcpy(io_buff, "Clock");
+    strcpy(io_buff, "Dashboard");
     return;
   }
 
   clearScreen();
-  drawAppTitle("Clock");
+  drawAppTitle("Dashboard");
 
   wifi_status = WiFi.status();
-  if(wifi_status != WL_CONNECTED) {
-    //drawError("Wi-Fi connection required");
+  if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
+    drawError("Wi-Fi connection required");
+    return;
   }
 
   strcpy(weather, "");
@@ -2628,7 +2794,8 @@ void clock(char mode, char *io_buff) {
       }
 
       // Погода
-      http.begin("http://109.230.144.68/cyd/weather.php");
+      sprintf(buff, "http://109.230.144.68/cyd/weather.php?lat=%f&lon=%f", global_lat, global_lon);
+      http.begin(buff);
       httpResponseCode = http.GET();
       if(httpResponseCode > 0) {
         strcpy(weather, http.getString().c_str());
@@ -2781,6 +2948,810 @@ void clock(char mode, char *io_buff) {
 
     if(global_exit_flag) {
       global_exit_flag = 0;
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+void fuzzy_clock(char mode, char *io_buff) {
+  int wifi_status;
+  char buff[80];
+  long unix_timestamp;
+  int hour;
+  int min;
+  int sec;
+  int row, col;
+  int i;
+  long prev_update_millis = 0;
+  char hour_flag[12];
+  char five_flag;
+  char ten_flag;
+  char quarter_flag;
+  char twenty_flag;
+  char past_flag;
+  char half_flag;
+  char to_flag;
+  char minutes_flag;
+  char oclock_flag;
+
+  char *symbols[] = {
+  // 01234567890
+    "ITXISMHALFZ", // 0
+    "TWENTYMFIVE", // 1
+    "QUARTERXTEN", // 2
+    "MINUTESXTOV", // 3
+    "PASTRTWELVE", // 4
+    "ONESIXTHREE", // 5
+    "FOURGTENTWO", // 6
+    "EIGHTELEVEN", // 7
+    "SEVENMNINEZ", // 8
+    "FIVEXOCLOCK"  // 9
+  };
+  if(mode == 0) {
+    strcpy(io_buff, "Fuzzy clock");
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Fuzzy clock");
+
+  wifi_status = WiFi.status();
+  if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
+    drawError("Wi-Fi connection required");
+    return;
+  }
+
+  retrieve_current_time();
+
+  while(1) {
+    if(millis() - prev_update_millis > CLOCK_UPDATE_SCREEN_INTERVAL) {
+      if(unixtime_retrieved == 0) {
+        retrieve_current_time();
+      }
+      prev_update_millis = millis();
+
+      unix_timestamp = unixtime_retrieved + (millis() - unixtime_retrieved_millis) / 1000;
+
+      hour = ((unix_timestamp + timezone) / 3600) % 12;
+      min = ((unix_timestamp + timezone) / 60) % 60;
+
+      for(i = 0; i < 12; i++) hour_flag[i] = 0;
+      five_flag = 0;
+      ten_flag = 0;
+      quarter_flag = 0;
+      twenty_flag = 0;
+      past_flag = 0;
+      to_flag = 0;
+      half_flag = 0;
+      minutes_flag = 0;
+      oclock_flag = 0;
+      if(min < 5) {
+        hour_flag[hour] = 1;
+        oclock_flag = 1;
+      }
+      else if(min < 35) {
+        past_flag = 1;
+        hour_flag[hour] = 1;
+        if(min < 10) {
+          five_flag = 1;
+        }
+        else if(min < 15) {
+          ten_flag = 1;
+        }
+        else if(min < 20) {
+          quarter_flag = 1;
+        }
+        else if(min < 25) {
+          twenty_flag = 1;
+        }
+        else if(min < 30) {
+          twenty_flag = 1;
+          five_flag = 1;
+        }
+        else {
+          half_flag = 1;
+        }
+      }
+      else {
+        to_flag = 1;
+        hour_flag[(hour + 1) % 12] = 1;
+        if(min < 40) {
+          minutes_flag = 1;
+          twenty_flag = 1;
+          five_flag = 1;
+        }
+        else if(min < 45) {
+          minutes_flag = 1;
+          twenty_flag = 1;
+        }
+        else if(min < 50) {
+          quarter_flag = 1;
+        }
+        else if(min < 55) {
+          minutes_flag = 1;
+          ten_flag = 1;
+        }
+        else {
+          minutes_flag = 1;
+          five_flag = 1;
+        }
+      }
+
+
+      // Выводим всё
+      for(row = 0; row < 10; row++) {
+        for(col = 0; col < 11; col++) {
+          tft.setTextColor(TFT_LIGHTGREY, TFT_WHITE);
+          // it is
+          if(row == 0 && (col == 0 || col == 1 || col == 3 || col == 4)) {
+            tft.setTextColor(TFT_BLACK, TFT_WHITE);
+          }
+          if(oclock_flag) {
+            if(row == 9 && col >= 5) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(past_flag) {
+            if(row == 4 && col < 4) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(to_flag) {
+            if(row == 3 && col >= 8 && col < 10) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(five_flag) {
+            if(row == 1 && col >= 7) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(ten_flag) {
+            if(row == 2 && col >= 8) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(quarter_flag) {
+            if(row == 2 && col < 7) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(twenty_flag) {
+            if(row == 1 && col < 6) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(half_flag) {
+            if(row == 0 && col >= 6 && col < 10) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(minutes_flag) {
+            if(row == 3 && col < 7) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[0]) {
+            if(row == 4 && col >= 5) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[1]) {
+            if(row == 5 && col < 3) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[2]) {
+            if(row == 6 && col >= 8) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[3]) {
+            if(row == 5 && col >= 6) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[4]) {
+            if(row == 6 && col < 4) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[5]) {
+            if(row == 9 && col < 4) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[6]) {
+            if(row == 5 && col >= 3 && col < 6) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[7]) {
+            if(row == 8 && col < 5) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[8]) {
+            if(row == 7 && col < 5) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[9]) {
+            if(row == 8 && col >= 6 && col < 10) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[10]) {
+            if(row == 6 && col >= 5 && col < 8) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          if(hour_flag[11]) {
+            if(row == 7 && col >= 5) {
+              tft.setTextColor(TFT_BLACK, TFT_WHITE);
+            }
+          }
+          sprintf(buff, "%c", symbols[row][col]);
+          tft.drawCentreString(buff, (col + 0.5) * tft.width() / 11, 45 + row * 24, FONT_BIG);
+        }
+      }
+    }
+    
+    if(!touchCheckNowait()) continue;
+
+    if(global_exit_flag) {
+      global_exit_flag = 0;
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+#define GOPHER_BYTES_MAX 32768
+
+void gopher(char mode, char *io_buff) {
+  int wifi_status;
+  char buff[160];
+  char address[80];
+  char path[80];
+  char address_to_go[160];
+  char *page = NULL;
+  char reload_page;
+  char ask_address;
+  char type;
+  int page_offset;
+  int button_pressed;
+  char *buttons[] = {
+    "PgUp", "Home", "URL", "PgDn",
+    NULL
+  };
+  if(mode == 0) {
+    strcpy(io_buff, "Gopher Browser");
+    return;
+  }
+
+  page = (char *)malloc(GOPHER_BYTES_MAX * sizeof(char));
+  clearScreen();
+  drawAppTitle("Gopher");
+
+  wifi_status = WiFi.status();
+  if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
+    drawError("Wi-Fi connection required");
+    return;
+  }
+  reload_page = 1;
+  ask_address = 0;
+  
+  strcpy(address, "gopher.floodgap.com");
+  //strcpy(address, "gopher.floodgap.com:70/0gopher/proxy");
+  while(1) {
+    // Спрашиваем адрес
+    if(ask_address) {
+      drawPrompt("Enter address", address);
+      if(strlen(address) > 0) {
+        reload_page = 1;
+      }
+      ask_address = 0;
+    }
+    if(reload_page) {
+      if(gopher_get_page(address, page, &type)) {
+        page_offset = 0;
+      }
+      else {
+        drawError("Error fetching data");
+      }
+      reload_page = 0;
+    }
+
+    tft.fillRect(0, 16, tft.width(), 16 - 1, TFT_LIGHTGREY);
+    tft.setTextColor(TFT_BLACK, TFT_LIGHTGREY);
+    tft.drawString(address, 1, 20, FONT_MONOSPACE);
+
+    // Выводим всё
+    tft.fillRect(0, 32, tft.width(), tft.height() - 32, TFT_WHITE);
+    gopher_show_page(page, &page_offset, type, 0, address_to_go);
+
+    drawButtonMatrix(0, tft.height() - 32, tft.width(), 32, buttons, 4, 1);
+    
+    touchWaitPress();
+    gopher_show_page(page, &page_offset, type, 1, address_to_go);
+    if(strlen(address_to_go) > 0) {
+      strcpy(address, address_to_go);
+      reload_page = 1;
+    }
+
+    button_pressed = touchCheckMatrix(0, tft.height() - 32, tft.width(), 32, buttons, 4, 1);
+    if(button_pressed != -1) {
+      if(button_pressed == 0) {
+        page_offset -= 31;
+        if(page_offset < 0) page_offset = 0;
+      }
+      if(button_pressed == 1) {
+        strcpy(address, "gopher.floodgap.com");
+        reload_page = 1;
+      }
+      if(button_pressed == 2) {
+        ask_address = 1;
+      }
+      if(button_pressed == 3) {
+        page_offset += 31;
+      }
+    }
+
+    if(global_exit_flag) {
+      global_exit_flag = 0;
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      free(page);
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+int gopher_get_page(char *address, char *buff_output, char *type) {
+  char buff[80];
+  char server[80];
+  char path[160];
+  int port = 70;
+  char server_flag;
+  char port_flag;
+  char path_flag;
+  char type_flag;
+  char finish_flag;
+  WiFiClient client;
+  String line;
+  long query_start_millis;
+  int address_offset;
+  int str_offset;
+
+  server_flag = 1;
+  port_flag = 0;
+  path_flag = 0;
+  type_flag = 0;
+  str_offset = 0;
+  finish_flag = 0;
+  strcpy(server, "");
+  strcpy(path, "");
+  strcpy(buff_output, "");
+  *type = 0;
+
+  for(address_offset = 0; address_offset < strlen(address); address_offset++) {
+    if(server_flag) {
+      if(address[address_offset] == ':') {
+        server_flag = 0;
+        port_flag = 1;
+        str_offset = 0;
+      }
+      else if(address[address_offset] == '/') {
+        server_flag = 0;
+        type_flag = 1;
+        str_offset = 0;
+      }
+      else {
+        server[str_offset] = address[address_offset];
+        str_offset++;
+        server[str_offset] = 0;
+      }
+    }
+    else if(port_flag) {
+      if(address[address_offset] == '/') {
+        port_flag = 0;
+        type_flag = 1;
+        str_offset = 0;
+        sscanf(buff, "%d", &port);
+      }
+      buff[str_offset] = address[address_offset];
+      str_offset++;
+      buff[str_offset] = 0;
+    }
+    else if(type_flag) {
+      *type = address[address_offset];
+      type_flag = 0;
+      path_flag = 1;
+      str_offset = 0;
+    }
+    else if(path_flag) {
+
+      path[str_offset] = address[address_offset];
+      str_offset++;
+      path[str_offset] = 0;
+    }
+  }
+
+  if(*type == 0) {
+    *type = '1';
+  }
+  if(port == 0) {
+    port = 70;
+  }
+  if(strlen(path) == 0) {
+    strcpy(path, "/");
+  }
+  if(strlen(server) == 0) {
+    return 1;
+  }
+
+  if (client.connect(server, port)) {
+    client.println(path);
+    query_start_millis = millis();
+
+    while (!client.available()) {
+      if(millis() - query_start_millis > 10000) return 0;
+    }
+
+    strcpy(buff_output, "");
+    while (client.available()) {
+      line = client.readStringUntil('\r');
+      Serial.println(line);
+      if(strlen(buff_output) + strlen(line.c_str()) >= GOPHER_BYTES_MAX) {
+        break;
+      }
+      strcat(buff_output, line.c_str());
+      if(!client.available()) delay(1000);
+    }
+    client.stop();
+    return 1;
+  }
+  return 0;
+}
+
+void gopher_show_page(char *page, int *offset_lines, char address_type, char get_touch_address, char *address_to_go) {
+  int current_line = 0;
+  int screen_offset = 0;
+  long page_byte_offset;
+  int buff_offset;
+  char buff_line[200];
+  char buff[80];
+  char text[80];
+  char server[80];
+  char port[80];
+  char path[80];
+  char query[80];
+
+  char line_type;
+  char reset_line_type;
+  char line_skip_to_end;
+  char new_line_flag;
+  char line_shown;
+  int line_offset;
+  int touch_line = -1;
+  TS_Point p;
+  int touch_x, touch_y;
+
+  page_byte_offset = 0;
+  buff_offset = 0;
+  line_type = 0;
+  line_skip_to_end = 0;
+  new_line_flag = 1;
+  strcpy(address_to_go, "");
+
+  if(touchCheckNowait()) {
+    p = touchscreen.getPoint();
+    touch_x = touchMapX(p.x, p.y);
+    touch_y = touchMapY(p.x, p.y);
+    if(touch_y >= 32 && touch_y < tft.height() - 32) {
+      touch_line = (touch_y - 32) / 8;
+    }
+  }
+  while(screen_offset < 31) {
+    strcpy(buff_line, "");
+    // Прочитать строку гофера в буфер
+    for(buff_offset = 0; buff_offset < 199; buff_offset++) {
+      if(page[page_byte_offset] == '\n') {
+        page_byte_offset++;
+        break;
+      }
+      buff_line[buff_offset] = page[page_byte_offset];
+      buff_line[buff_offset+1] = 0;
+      page_byte_offset++;
+      if(page[page_byte_offset] == 0) break;
+    }
+    // Парсить её
+    if(address_type == '0') {
+      strcpy(text, buff_line);
+      line_type = 'i';
+      strcpy(path, "");
+      strcpy(server, "");
+      strcpy(port, "");
+    }
+    else {
+      gopher_parse_line(buff_line, &line_type, text, path, server, port);
+    }
+
+    // Выводим текст построчно
+    line_offset = 0;
+    line_shown = 0;
+    while(line_shown == 0) {
+      for(buff_offset = 0; buff_offset < 40; line_offset++) {
+        if(text[line_offset] == 0) {
+          buff[buff_offset] = 0;
+          line_shown = 1;
+          break;
+        }
+        buff[buff_offset] = text[line_offset];
+        buff_offset++;
+        buff[buff_offset] = 0;
+      }
+
+      if(current_line < *offset_lines) {
+        current_line++;
+        continue;
+      }
+
+      if(line_type == 'i') {
+        tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      }
+      else if(line_type == '0' || line_type == '1') {
+        if(get_touch_address && touch_line == screen_offset) {
+          tft.setTextColor(TFT_WHITE, TFT_BLUE);
+          sprintf(address_to_go, "%s:%s/%c%s", server, port, line_type, path);
+        }
+        else {
+          tft.setTextColor(TFT_BLUE, TFT_WHITE);
+        }
+      }
+      else if(line_type == '7') {
+        if(get_touch_address && touch_line == screen_offset) {
+          tft.setTextColor(TFT_WHITE, TFT_BLUE);
+          strcpy(query, "");
+          drawPrompt("Query", query);
+          sprintf(address_to_go, "%s:%s/%c%s\t%s", server, port, line_type, path, query);
+        }
+        else {
+          tft.setTextColor(TFT_BLUE, TFT_WHITE);
+        }
+      }
+      else if(line_type == '3') {
+        tft.setTextColor(TFT_RED, TFT_WHITE);
+      }
+      else {
+        tft.setTextColor(TFT_DARKGREY, TFT_WHITE);
+      }
+      tft.drawString(buff, 1, 32 + screen_offset * 8, FONT_MONOSPACE);
+      screen_offset++;
+      current_line++;
+    }
+    if(page[page_byte_offset] == 0) break;
+  }
+}
+
+void gopher_parse_line(char *line, char *line_type, char *line_text, char *path, char *server, char *port) {
+  int line_offset;
+  int text_offset;
+  char line_type_flag;
+  char line_flag;
+  char path_flag;
+  char server_flag;
+  char port_flag;
+  line_type_flag = 1;
+  line_flag = 0;
+  path_flag = 0;
+  server_flag = 0;
+  port_flag = 0;
+  line_offset = 0;
+  text_offset = 0;
+  while(line[line_offset] != 0) {
+    if(line_type_flag) {
+      line_type_flag = 0;
+      line_flag = 1;
+      *line_type = line[line_offset];
+    }
+    else if(line_flag) {
+      if(line[line_offset] == '\t') {
+        line_flag = 0;
+        path_flag = 1;
+        text_offset = 0;
+      }
+      else {
+        line_text[text_offset] = line[line_offset];
+        text_offset++;
+        line_text[text_offset] = 0;
+      }
+    }
+    else if(path_flag) {
+      if(line[line_offset] == '\t') {
+        path_flag = 0;
+        server_flag = 1;
+        text_offset = 0;
+      }
+      else {
+        path[text_offset] = line[line_offset];
+        text_offset++;
+        path[text_offset] = 0;
+      }
+    }
+    else if(server_flag) {
+      if(line[line_offset] == '\t') {
+        server_flag = 0;
+        port_flag = 1;
+        text_offset = 0;
+      }
+      else {
+        server[text_offset] = line[line_offset];
+        text_offset++;
+        server[text_offset] = 0;
+      }
+    }
+    else if(port_flag) {
+      if(line[line_offset] == '\t') {
+        server_flag = 0;
+        port_flag = 0;
+        text_offset = 0;
+      }
+      else {
+        port[text_offset] = line[line_offset];
+        text_offset++;
+        port[text_offset] = 0;
+      }
+    }
+    line_offset++;
+  }
+}
+
+#define WEATHER_AUTO_UPDATE_INTERVAL 300000
+
+void weather(char mode, char *io_buff) {
+  HTTPClient http;
+  int httpResponseCode;
+  int button_pressed;
+  int wifi_status;
+  long prev_update_data_millis;
+  int i;
+  char buff[80];
+  char weather[80];
+  char temp[80];
+  char wind[80];
+  char temp_flag;
+  char wind_flag;
+  char weather_flag;
+  char from_offset = 0;
+  char update_flag;
+  char *buttons[] = {
+    "Update now",
+    "Set Latitude",
+    "Set Longitude",
+    NULL
+  };
+
+  if(mode == 0) {
+    strcpy(io_buff, "Weather");
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Weather");
+
+  wifi_status = WiFi.status();
+  if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
+    drawError("Wi-Fi connection required");
+    return;
+  }
+
+  update_flag = 1;
+  prev_update_data_millis = millis();
+  while(1) {
+    if(update_flag) {
+      sprintf(buff, "http://109.230.144.68/cyd/weather.php?lat=%f&lon=%f", global_lat, global_lon);
+      http.begin(buff);
+      httpResponseCode = http.GET();
+      if(httpResponseCode > 0) {
+        prev_update_data_millis = millis();
+        strcpy(buff, http.getString().c_str());
+        temp_flag = 1;
+        wind_flag = 0;
+        weather_flag = 0;
+        strcpy(temp, "");
+        strcpy(wind, "");
+        strcpy(weather, "");
+        
+        for(i = 0; i < strlen(buff); i++) {
+          if(buff[i] == ',') {
+            if(temp_flag) {
+              temp_flag = 0;
+              wind_flag = 1;
+              // Начало строки с температурой
+              memcpy(temp, buff, i - 2);
+              temp[i - 1] = 0;
+              from_offset = i + 1;
+            }
+            else if(wind_flag) {
+              wind_flag = 0;
+              weather_flag = 1;
+              memcpy(wind, buff + from_offset + 1, i - from_offset - 1);
+              wind[i - from_offset - 1] = 0;
+              strcpy(weather, buff + i + 2);
+            }
+          }
+        }
+        tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+        tft.setTextColor(TFT_BLACK, TFT_WHITE);
+        tft.drawCentreString(temp, tft.width() / 2, 35, FONT_BIGGER);
+        tft.drawCentreString(wind, tft.width() / 2, 100, FONT_BIG);
+        tft.drawCentreString(weather, tft.width() / 2, 150, FONT_DEFAULT);
+        update_flag = 0;
+      }
+    }
+
+    drawButtonMatrix(0, tft.height() - 96, tft.width() / 2, 96, buttons, 1, 3);
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    sprintf(buff, "%f", global_lat);
+    tft.drawCentreString(buff, 3 * tft.width() / 4, tft.height() - 64 + 8, FONT_DEFAULT);
+    sprintf(buff, "%f", global_lon);
+    tft.drawCentreString(buff, 3 * tft.width() / 4, tft.height() - 32 + 8, FONT_DEFAULT);
+
+    while(!touchCheckNowait()) {
+      tft.setTextColor(TFT_LIGHTGREY, TFT_WHITE);
+      sprintf(buff, "  Next update in %d min %d sec  ",
+        (prev_update_data_millis + WEATHER_AUTO_UPDATE_INTERVAL - millis()) / 60000,
+        ((prev_update_data_millis + WEATHER_AUTO_UPDATE_INTERVAL - millis()) / 1000) % 60
+      );
+      tft.drawCentreString(buff, tft.width() / 2, tft.height() - 128, FONT_DEFAULT);
+
+      if(millis() - prev_update_data_millis > WEATHER_AUTO_UPDATE_INTERVAL) {
+        update_flag = 1;
+        break;
+      }
+    }
+    if(update_flag) {
+      continue;
+    }
+    touchWaitPress();
+
+    button_pressed = touchCheckMatrix(0, tft.height() - 96, tft.width() / 2, 96, buttons, 1, 3);
+    if(button_pressed != -1) {
+      if(button_pressed == 0) {
+        update_flag = 1;
+      }
+      else if(button_pressed == 1) {
+        sprintf(buff, "%f", global_lat);
+        drawPrompt("Enter latitude", buff);
+        if(strlen(buff) > 0) {
+          sscanf(buff, "%f", &global_lat);
+          sprintf(buff, "%f %f", global_lat, global_lon);
+          write_file_from_buff("/Settings/Coordinates", buff);
+        }
+        tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      }
+      else if(button_pressed == 2) {
+        sprintf(buff, "%f", global_lon);
+        drawPrompt("Enter longitude", buff);
+        if(strlen(buff) > 0) {
+          sscanf(buff, "%f", &global_lon);
+          sprintf(buff, "%f %f", global_lat, global_lon);
+          write_file_from_buff("/Settings/Coordinates", buff);
+        }
+        tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      }
+    }
+
+    if(global_exit_flag) {
+      // Флаг не сбрасываем, так как не основное приложение
       drawAppTitle("Exit");
       touchWaitRelease();
       return;
@@ -3706,6 +4677,10 @@ void lights_off(char mode, char *io_buff) {
   }
 }
 
+// ====================================================
+// Начиная отсюда идут общие функции
+// ====================================================
+
 // Нахождение определителя матрицы третьего порядка
 double det3(double x11, double x12, double x13, double x21, double x22, double x23, double x31, double x32, double x33) {
   return
@@ -4440,22 +5415,13 @@ void setup() {
     }
   }
 
+  if(read_file_to_buff("/Settings/Coordinates", 79, buff)) {
+    sscanf(buff, "%f %f", &global_lat, &global_lon);
+  }
+
 #ifdef IS_WIFI_ENABLED
   WiFi.begin();
 #endif
-/*
-  int i, j;
-  //char buff[10];
-  for(j = 0; j != 16; j++) {
-    for(i = 0; i != 16; i++) {
-      sprintf(buff, "%c", (char)(i + j * 16));
-      tft.drawString(buff, i * tft.width() / 16, j * tft.height() / 16, 2);
-    }
-  }
-  touchWaitPress();
-  touchWaitRelease();
-  clearScreen();
-*/
 
   // Отлаживаемая функция
   //files(1, NULL);

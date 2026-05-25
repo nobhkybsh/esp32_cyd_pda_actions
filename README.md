@@ -62,6 +62,9 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Life (Cellular automaton)
 * Wi-Fi connection
 * Clock stand
+* Gopher browser
+* Fuzzy clock
+* Weather
 
 # Touch sensor calibration
 It uses three-dots linear calibration.
@@ -89,8 +92,7 @@ It could fix parallelogram distortions.
 # To Do
 * App icons
 * Wi-Fi apps
-* Gopher browser
-* PIM apps (notes, todo, contacts, schedule, handwriting notes)
+* PIM apps (todo, contacts, schedule, handwriting notes)
 * SD support
 * More games
 * More apps

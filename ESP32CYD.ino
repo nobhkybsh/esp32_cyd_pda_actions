@@ -35,6 +35,7 @@
 - Подключение к вай-фаю
 - Гофер браузер
 - Погода (с настройкой координат)
+- Чат
 
 Лог разработки:
 2026-03-11 Лаунчер и статическая информация о системе
@@ -67,18 +68,18 @@
 2026-05-23 Исправлены баги гофер-браузера, приложение книги
 Sketch uses 1229450 bytes (93%) of program storage space. Maximum is 1310720 bytes.
 2026-05-25 Исправлен баг когда сеть по умолчанию вай-фай недоступна, погода и координаты
+2026-05-26 Значки, чат
+Sketch uses 1236154 bytes (94%) of program storage space. Maximum is 1310720 bytes.
 
 Направления работы:
 - Русский шрифт маленький и средний
 - Русская клавиатура
 - Вывод русского из UTF-8
-- Значки приложений
 - Контакты
 - Расписание (календарь)
 - Список дел
 - Расходы
 - Рисование с сохранением
-- Простой чат
 - Часы (с настройкой времени)
 Затем игры:
 - Змейка
@@ -141,6 +142,10 @@ XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 
 #define I2C_SDA 27 
 #define I2C_SCL 22
+
+#define APP_MODE_LAUNCH 1
+#define APP_MODE_RETURN_NAME 0
+#define APP_MODE_RETURN_ICON 2
 
 char enter[] = {
   8, 8,
@@ -229,6 +234,7 @@ void wifi(char mode, char *io_buff);
 void dashboard(char mode, char *io_buff);
 void fuzzy_clock(char mode, char *io_buff);
 void gopher(char mode, char *io_buff);
+void chat(char mode, char *io_buff);
 void weather(char mode, char *io_buff);
 #endif
 #ifndef ONE_FUNCTION_MODE
@@ -268,6 +274,7 @@ app_pointer apps[] = {
   dashboard,
   fuzzy_clock,
   gopher,
+  chat,
   weather,
 #endif
 #ifndef ONE_FUNCTION_MODE
@@ -293,16 +300,42 @@ void launcher(char mode, char *io_buff) {
   int touch_x;
   int touch_y;
   char redraw_flag;
-  if(mode == 0) {
+  char app_my_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Launcher");
     return;
   }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_my_icon, 34);
+    return;
+  }
+
   
   clearScreen();
   drawAppTitle("Launcher");
 
   int row, col;
   char app_name[80];
+  char app_icon[80];
   int apps_eol = 0;
 
   redraw_flag = 1;
@@ -312,9 +345,11 @@ void launcher(char mode, char *io_buff) {
         for(row = 0; row < 19; row++) {
           if(!apps_eol) {
             if(apps[row + col * 19 + 1]) {
-              apps[row + col * 19 + 1](0, app_name);
+              apps[row + col * 19 + 1](APP_MODE_RETURN_NAME, app_name);
+              apps[row + col * 19 + 1](APP_MODE_RETURN_ICON, app_icon);
               tft.setTextColor(TFT_BLACK, TFT_WHITE);
-              tft.drawString(app_name, 1 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+              tft.drawString(app_name, 19 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+              image_from_bits(col * tft.width() / 2, (row + 1) * 16, app_icon, TFT_BLACK, TFT_WHITE);
             }
             else {
               apps_eol = row + col * 19 + 1;
@@ -336,18 +371,21 @@ void launcher(char mode, char *io_buff) {
     col = touch_x / (tft.width() / 2);
 
     if(row + col * 19 + 1 < apps_eol) {
-      apps[row + col * 19 + 1](0, app_name);
+      apps[row + col * 19 + 1](APP_MODE_RETURN_NAME, app_name);
+      apps[row + col * 19 + 1](APP_MODE_RETURN_ICON, app_icon);
       tft.fillRect(col * tft.width() / 2, (row + 1) * 16, tft.width() / 2, 16, TFT_BLUE);
       tft.setTextColor(TFT_WHITE, TFT_BLUE);
-      tft.drawString(app_name, 1 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+      tft.drawString(app_name, 19 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+      image_from_bits(col * tft.width() / 2, (row + 1) * 16, app_icon, TFT_WHITE, TFT_BLUE);
       delay(100);
       touchWaitRelease();
 
       tft.fillRect(col * tft.width() / 2, (row + 1) * 16, tft.width() / 2, 16, TFT_WHITE);
       tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawString(app_name, 1 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+      tft.drawString(app_name, 19 + col * tft.width() / 2, (row + 1) * 16, FONT_DEFAULT);
+      image_from_bits(col * tft.width() / 2, (row + 1) * 16, app_icon, TFT_BLACK, TFT_WHITE);
 
-      apps[row + col * 19 + 1](1, NULL);
+      apps[row + col * 19 + 1](APP_MODE_LAUNCH, NULL);
       break;
     }
   }
@@ -374,16 +412,35 @@ void calculator(char mode, char *io_buff) {
     "C",   "0",   ".",   "=",   "+",
   };
   int button_pressed = 0;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01011111, B11111010,
+    B01011111, B11111010,
+    B01000000, B00000010,
+    B01010101, B01011010,
+    B01000000, B00000010,
+    B01010101, B01011010,
+    B01000000, B00000010,
+    B01010101, B01011010,
+    B01000000, B00000010,
+    B01010101, B01011010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Calculator");
     return;
   }
-  // Значок
-  if(mode == 2) {
-    strcpy(io_buff, "");
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
+
   clearScreen();
   drawAppTitle("Calculator");
 
@@ -548,9 +605,33 @@ void system_info(char mode, char *io_buff) {
   char buff[80];
   int i = 0;
   long update_millis = millis();
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000001, B10000010,
+    B01000001, B10000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000011, B10000010,
+    B01000001, B10000010,
+    B01000001, B10000010,
+    B01000001, B10000010,
+    B01000001, B10000010,
+    B01000011, B11000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "System Info");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -641,8 +722,32 @@ void files(char mode, char *io_buff) {
     "NewDir", "Copy", "Move", "Delete",
     NULL
   };
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B00111111, B00000000,
+    B01000000, B10000000,
+    B01000000, B01111100,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Files");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -954,9 +1059,34 @@ void notes(char mode, char *io_buff) {
     NULL
   };
   char **notes_list = NULL;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B00110110, B01101100,
+    B01001001, B10010010,
+    B01000000, B00000010,
+    B01010110, B11111010,
+    B01000000, B00000010,
+    B01011110, B11000010,
+    B01000000, B00000010,
+    B01010101, B11111010,
+    B01000000, B00000010,
+    B01011101, B10000010,
+    B01000000, B00000010,
+    B01010111, B11110010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+
   
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Notes");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1129,9 +1259,32 @@ void books(char mode, char *io_buff) {
     NULL
   };
   char **books_list = NULL;
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B00011111, B11111110,
+    B00100000, B00000100,
+    B00100000, B00000100,
+    B00111111, B11111110,
+    B01000000, B00001000,
+    B01000000, B00001000,
+    B00111111, B11111110,
+    B00100000, B00000100,
+    B00100000, B00000100,
+    B00111111, B11111110,
+    B01000000, B00000100,
+    B01000000, B00000100,
+    B01000000, B00000100,
+    B00111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Books");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1240,9 +1393,32 @@ void torch(char mode, char *io_buff) {
     "Cyan", "White",
     NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000111, B11100010,
+    B01001000, B00010010,
+    B01010000, B00001010,
+    B01010000, B00001010,
+    B01010000, B00001010,
+    B01001000, B00010010,
+    B01000100, B00100010,
+    B01000011, B11000010,
+    B01000011, B11000010,
+    B01000011, B11000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Torch");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1282,9 +1458,32 @@ void security(char mode, char *io_buff) {
     "Delete password",
     NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000111, B11100010,
+    B01001000, B00010010,
+    B01001000, B00010010,
+    B01001000, B00010010,
+    B01011111, B11111010,
+    B01011111, B11111010,
+    B01011110, B01111010,
+    B01011110, B01111010,
+    B01001111, B11110010,
+    B01000111, B11100010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Security");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1376,9 +1575,32 @@ void counter(char mode, char *io_buff) {
     "reset",
     NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00010010,
+    B01000000, B00110010,
+    B01000010, B00010010,
+    B01000010, B00010010,
+    B01001111, B10010010,
+    B01000010, B00010010,
+    B01000010, B00010010,
+    B01000000, B00111010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Counter");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1431,14 +1653,38 @@ void random_numbers(char mode, char *io_buff) {
     "1/20", "1/100",
     NULL
   };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01011000, B00011010,
+    B01011000, B00011010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000001, B10000010,
+    B01000001, B10000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01011000, B00011010,
+    B01011000, B00011010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
   
-  if(mode == 0) {
-    strcpy(io_buff, "Random numbers");
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Random Numbers");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
   clearScreen();
-  drawAppTitle("Random numbers");
+  drawAppTitle("Random Numbers");
 
   while(1) {
     drawButtonMatrix(0, 50, tft.width(), tft.height() - 50, buttons, 2, 4);
@@ -1512,9 +1758,32 @@ void brightness_app(char mode, char *io_buff) {
     "75 %", "Max",
     NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01111110, B10000010,
+    B01111101, B01000010,
+    B01111110, B10000010,
+    B01111101, B01000010,
+    B01111110, B10000010,
+    B01111101, B01000010,
+    B01111110, B10000010,
+    B01111101, B01000010,
+    B01111110, B10000010,
+    B01111101, B01000010,
+    B01111110, B10000010,
+    B01111101, B01000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Brightness");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1600,9 +1869,32 @@ void timer(char mode, char *io_buff) {
   char *buttons_auto_restart[] = {
     "Auto restart", NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B00011111, B11111000,
+    B00100001, B01010100,
+    B01000001, B10101010,
+    B01000001, B01010010,
+    B01000001, B10100010,
+    B01000001, B01000010,
+    B01000001, B10000010,
+    B01000001, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B00100000, B00000100,
+    B00011111, B11111000,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Timer");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1811,6 +2103,25 @@ void stopwatch_app(char mode, char *io_buff) {
   int current_lap = 0;
   int lap_list_offset = 0;
   int lap_list_selected = 0;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000001, B10000010,
+    B01000001, B10010010,
+    B01000111, B11100010,
+    B01001000, B00010010,
+    B01001001, B00010010,
+    B01001001, B00010010,
+    B01001001, B11010010,
+    B01001000, B00010010,
+    B01001000, B00010010,
+    B01000111, B11100010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
   // 100 laps
   stopwatch_laps = (char **)malloc(STOPWATCH_MAX_LAPS * sizeof(char *));
@@ -1818,8 +2129,12 @@ void stopwatch_app(char mode, char *io_buff) {
     stopwatch_laps[i] = NULL;
   }
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Stopwatch");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -1989,9 +2304,32 @@ void breathe(char mode, char *io_buff) {
     "4-7-8-0",
     NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00110010,
+    B01000000, B01001010,
+    B01000000, B00001010,
+    B01011111, B11110010,
+    B01000000, B00000010,
+    B01001111, B11110010,
+    B01000000, B00001010,
+    B01000000, B00110010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Breathe");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -2158,12 +2496,35 @@ void life(char mode, char *io_buff) {
     "Start", "Step", "Stop", "Rnd", "Clr",
     NULL
   };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00110010,
+    B01000000, B00110010,
+    B01000000, B00000010,
+    B01001100, B00110010,
+    B01001100, B00110010,
+    B01000000, B00000010,
+    B01000001, B10110010,
+    B01000001, B10110010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
   field = (char *)malloc(LIFE_FIELD_WIDTH_CELLS * LIFE_FIELD_HEIGHT_CELLS / 8 * sizeof(char));
   field_next = (char *)malloc(LIFE_FIELD_WIDTH_CELLS * LIFE_FIELD_HEIGHT_CELLS / 8 * sizeof(char));
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Life");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -2324,9 +2685,32 @@ void screensaver(char mode, char *io_buff) {
   int stars_x[STAR_COUNT];
   int stars_y[STAR_COUNT];
   int i;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000100, B00000010,
+    B01000000, B00100010,
+    B01000000, B01110010,
+    B01000000, B00100010,
+    B01000000, B00000010,
+    B01000010, B00000010,
+    B01000000, B00000010,
+    B01001000, B00010010,
+    B01000000, B00000010,
+    B01000010, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Screensaver");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -2406,9 +2790,32 @@ void draw(char mode, char *io_buff) {
   int prev_touch_x;
   int prev_touch_y;
   char touch_started = 0;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00001110,
+    B01000000, B00010010,
+    B01000000, B00010010,
+    B01000110, B00001010,
+    B01001001, B00001010,
+    B01001000, B10001010,
+    B01010000, B01001010,
+    B01010000, B00110010,
+    B01010000, B00000010,
+    B01100000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Draw");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -2460,9 +2867,32 @@ void draw(char mode, char *io_buff) {
 
 void wifi(char mode, char *io_buff) {
   int wifi_status;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000111, B11100010,
+    B01011000, B00011010,
+    B01000000, B00000010,
+    B01000111, B11100010,
+    B01001000, B00010010,
+    B01000000, B00000010,
+    B01000011, B11000010,
+    B01000000, B00000010,
+    B01000001, B10000010,
+    B01000001, B10000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Wi-Fi");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -2766,9 +3196,32 @@ void dashboard(char mode, char *io_buff) {
     "", "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
   };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111110, B11111110,
+    B01000010, B10000010,
+    B01000010, B00000010,
+    B01000010, B10000010,
+    B01111110, B10000010,
+    B00000000, B10000000,
+    B01111110, B10000010,
+    B01000010, B11111110,
+    B00000010, B00000000,
+    B01000010, B11111110,
+    B01000010, B10000010,
+    B01000000, B10000010,
+    B01000010, B10000010,
+    B01111110, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Dashboard");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -2990,13 +3443,37 @@ void fuzzy_clock(char mode, char *io_buff) {
     "SEVENMNINEZ", // 8
     "FIVEXOCLOCK"  // 9
   };
-  if(mode == 0) {
-    strcpy(io_buff, "Fuzzy clock");
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01001101, B01010010,
+    B01010001, B01010010,
+    B01001001, B00100010,
+    B01000101, B01010010,
+    B01011001, B01010010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Fuzzy Clock");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
   clearScreen();
-  drawAppTitle("Fuzzy clock");
+  drawAppTitle("Fuzzy Clock");
 
   wifi_status = WiFi.status();
   if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
@@ -3230,14 +3707,38 @@ void gopher(char mode, char *io_buff) {
     "PgUp", "Home", "URL", "PgDn",
     NULL
   };
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000011, B11000010,
+    B01000100, B00100010,
+    B01001000, B00010010,
+    B01001000, B00000010,
+    B01001000, B01110010,
+    B01001000, B00010010,
+    B01000100, B00100010,
+    B01000011, B11000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Gopher Browser");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
   page = (char *)malloc(GOPHER_BYTES_MAX * sizeof(char));
   clearScreen();
-  drawAppTitle("Gopher");
+  drawAppTitle("Gopher Browser");
 
   wifi_status = WiFi.status();
   if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
@@ -3638,9 +4139,32 @@ void weather(char mode, char *io_buff) {
     "Set Longitude",
     NULL
   };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000011, B10000010,
+    B01000100, B01000010,
+    B01001000, B11110010,
+    B01001101, B00001010,
+    B01010010, B00001010,
+    B01010000, B00001010,
+    B01010000, B00001010,
+    B01001111, B11110010,
+    B01000000, B00000010,
+    B01010101, B01000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Weather");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -3760,6 +4284,179 @@ void weather(char mode, char *io_buff) {
   }
 }
 
+#define CHAT_AUTO_UPDATE_INTERVAL 30000
+#define CHAT_NICKNAME_FILE "/Settings/Nickname"
+
+void chat(char mode, char *io_buff) {
+  HTTPClient http;
+  int httpResponseCode;
+  int button_pressed;
+  int wifi_status;
+  long prev_update_data_millis;
+  int i;
+  int screen_line;
+  int messages_offset;
+  int buff_offset;
+  char buff[80];
+  char nickname[80];
+  char *query = NULL;
+  char message[80];
+  char *messages = NULL;
+  char update_flag;
+  char *buttons[] = {
+    "Send message",
+    NULL
+  };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B00111111, B11111100,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01001101, B10110010,
+    B01001101, B10110010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B00111111, B01111100,
+    B00000001, B01000000,
+    B00000011, B10000000,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Chat");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Chat");
+
+  wifi_status = WiFi.status();
+  if(wifi_status != WL_CONNECTED && unixtime_retrieved == 0) {
+    drawError("Wi-Fi connection required");
+    return;
+  }
+
+  read_file_to_buff(CHAT_NICKNAME_FILE, 79, nickname);
+  while(1) {
+    drawPrompt("Your nickname (up to 10 chars)", nickname);
+    if(strlen(nickname) == 0) {
+      drawError("Nickname cannot be empty");
+      continue;
+    }
+    if(strlen(nickname) > 10) {
+      drawError("Nickname too long");
+      continue;
+    }
+    break;
+  }
+  write_file_from_buff(CHAT_NICKNAME_FILE, nickname);
+  tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+  
+  messages = (char*)malloc(2048 * sizeof(char));
+  query = (char*)malloc(300 * sizeof(char));
+
+  update_flag = 1;
+  while(1) {
+    if(update_flag) {
+      http.begin("http://109.230.144.68/cyd/chat_data.txt");
+      httpResponseCode = http.GET();
+      if(httpResponseCode > 0) {
+        strcpy(messages, http.getString().c_str());
+        screen_line = 0;
+        buff_offset = 0;
+        buff[buff_offset] = 0;
+        tft.setTextColor(TFT_BLACK, TFT_WHITE);
+        tft.fillRect(0, 16, tft.width(), tft.height() - 16 - 32 - 8, TFT_WHITE);
+        for(messages_offset = 0; messages[messages_offset] != 0; messages_offset++) {
+          if(messages[messages_offset] == '\r') continue;
+          if(messages[messages_offset] == '\n' || strlen(buff) >= 40) {
+            tft.drawString(buff, 1, 20 + screen_line * 8, FONT_MONOSPACE);
+            screen_line++;
+            buff_offset = 0;
+            buff[buff_offset] = 0;
+            if(screen_line == 32) break;
+            continue;
+          }
+          buff[buff_offset] = messages[messages_offset];
+          buff_offset++;
+          buff[buff_offset] = 0;
+        }
+        update_flag = 0;
+      }
+      prev_update_data_millis = millis();
+    }
+
+    drawButtonMatrix(0, tft.height() - 32, tft.width(), 32, buttons, 1, 1);
+
+    while(!touchCheckNowait()) {
+      tft.setTextColor(TFT_LIGHTGREY, TFT_WHITE);
+      sprintf(buff, "Next update in %d sec  ",
+        ((prev_update_data_millis + CHAT_AUTO_UPDATE_INTERVAL - millis()) / 1000) % 60
+      );
+      tft.drawString(buff, 1, tft.height() - 40, FONT_MONOSPACE);
+
+      if(millis() - prev_update_data_millis > CHAT_AUTO_UPDATE_INTERVAL) {
+        update_flag = 1;
+        break;
+      }
+    }
+    if(update_flag) {
+      continue;
+    }
+    touchWaitPress();
+
+    button_pressed = touchCheckMatrix(0, tft.height() - 32, tft.width(), 32, buttons, 1, 1);
+    if(button_pressed != -1) {
+      if(button_pressed == 0) {
+        drawPrompt("Message to send", message);
+        if(strlen(message) > 0) {
+          if(strlen(message) < 80) {
+            sprintf(query, "http://109.230.144.68/cyd/chat_post.php?nickname=%s&message=%s", nickname, message);
+            http.begin(query);
+            httpResponseCode = http.GET();
+            if(httpResponseCode == 0) {
+              drawError("Sending error");
+            }
+            else {
+              strcpy(buff, http.getString().c_str());
+              if(strcmp(buff, "ok")) {
+                drawError(buff);
+              }
+              else {
+                strcpy(message, "");
+              }
+            }
+          }
+          else {
+            drawError("Message too long");
+          }
+        }
+        update_flag = 1;
+      }
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+    }
+
+    if(global_exit_flag) {
+      // Флаг не сбрасываем, так как не основное приложение
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      free(messages);
+      free(query);
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
 #endif
 
 #define I2C_MAX_DEVICES 127
@@ -3778,9 +4475,32 @@ void i2c_scanner(char mode, char *io_buff) {
     "Scan", "Clear",
     NULL
   };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000010, B00000010,
+    B01001001, B00000010,
+    B01000010, B00000010,
+    B01011011, B00111010,
+    B01001000, B01000010,
+    B01001000, B01000010,
+    B01001000, B01000010,
+    B01001000, B01000010,
+    B01011100, B00111010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "I2C Scanner");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -3860,8 +4580,32 @@ void i2c_scanner(char mode, char *io_buff) {
 void screen_test(char mode, char *io_buff) {
   int i;
   int colors[] = {TFT_WHITE, TFT_RED, TFT_GREEN, TFT_BLUE, TFT_MAGENTA, TFT_CYAN, TFT_YELLOW, TFT_BLACK};
-  if(mode == 0) {
-    strcpy(io_buff, "TFT Screen test");
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01010101, B00000010,
+    B01010101, B00000010,
+    B01010101, B00000010,
+    B01010101, B00000010,
+    B01010101, B00000010,
+    B01010101, B00000010,
+    B01111111, B11111110,
+    B01111111, B00000010,
+    B01111111, B11111110,
+    B01111111, B00000010,
+    B01111111, B11111110,
+    B01111111, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Screen Test");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -4382,9 +5126,32 @@ void touch_calibration(char mode, char *io_buff) {
   
   int touch_x;
   int touch_y;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000000, B00111010,
+    B01000000, B01110010,
+    B01000000, B11100010,
+    B01000001, B11000010,
+    B01000011, B10000010,
+    B01000111, B00000010,
+    B01010100, B00000010,
+    B01001000, B00000010,
+    B01010100, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Calibration");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -4482,13 +5249,36 @@ void fifteen(char mode, char *io_buff) {
     "13", "14", "15", " ",
     NULL
   };
-  
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000100, B11110010,
+    B01001100, B10000010,
+    B01000100, B10000010,
+    B01000100, B11100010,
+    B01000100, B00010010,
+    B01000100, B00010010,
+    B01000100, B00010010,
+    B01001110, B11100010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
   for(i = 0; i < 16; i++) {
     buttons_won[i] = buttons[i];
   }
 
-  if(mode == 0) {
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Fifteen");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -4586,9 +5376,32 @@ void lights_off(char mode, char *io_buff) {
     off, off, off, off, off,
     NULL
   };
-  
-  if(mode == 0) {
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01011011, B00000010,
+    B01011011, B00000010,
+    B01000000, B00000010,
+    B01011000, B00000010,
+    B01011000, B00000010,
+    B01000000, B00011010,
+    B01000000, B00011010,
+    B01000000, B00000010,
+    B01000000, B11011010,
+    B01000000, B11011010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Lights Off");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
     return;
   }
 
@@ -4877,7 +5690,7 @@ void checkPasswordUntilCorrect(char *correct_password) {
   };
 
   clearScreen();
-  drawAppTitle("Enter password");
+  drawAppTitle("Enter Password");
 
   // Читаем информацию о владельце
   file = FFat.open("/Settings/Owner");
@@ -4958,16 +5771,16 @@ void drawButtonMatrix(int left_x, int top_y, int width, int height, char **str, 
           tft.drawRect(left_x + x * width / cols + 1, top_y + y * height / rows + 1, width / cols - 2, height / rows - 2, TFT_BLACK);
           tft.fillRect(left_x + x * width / cols + 2, top_y + y * height / rows + 2, width / cols - 4, height / rows - 4, TFT_LIGHTGREY);
           if(!strcmp(str[x + y * cols], ":enter:")) {
-            image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, enter, TFT_BLACK, TFT_LIGHTGREY);
+            image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, enter, TFT_BLACK, TFT_LIGHTGREY);
           }
           else if(!strcmp(str[x + y * cols], ":backspace:")) {
-            image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, backspace, TFT_BLACK, TFT_LIGHTGREY);
+            image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, backspace, TFT_BLACK, TFT_LIGHTGREY);
           }
           else if(!strcmp(str[x + y * cols], ":shift:")) {
-            image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, shift, TFT_BLACK, TFT_LIGHTGREY);
+            image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, shift, TFT_BLACK, TFT_LIGHTGREY);
           }
           else if(!strcmp(str[x + y * cols], ":change:")) {
-            image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, change_keyboard, TFT_BLACK, TFT_LIGHTGREY);
+            image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, change_keyboard, TFT_BLACK, TFT_LIGHTGREY);
           }
           else {
             tft.setTextColor(TFT_BLACK, TFT_LIGHTGREY);
@@ -5030,16 +5843,16 @@ int touchCheckMatrix(int left_x, int top_y, int width, int height, char **str, i
                 tft.drawRect(left_x + x * width / cols + 1, top_y + y * height / rows + 1, width / cols - 2, height / rows - 2, TFT_BLACK);
                 tft.fillRect(left_x + x * width / cols + 2, top_y + y * height / rows + 2, width / cols - 4, height / rows - 4, bg_color);
                 if(!strcmp(str[x + y * cols], ":enter:")) {
-                  image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, enter, TFT_BLACK, bg_color);
+                  image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, enter, TFT_BLACK, bg_color);
                 }
                 else if(!strcmp(str[x + y * cols], ":backspace:")) {
-                  image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, backspace, TFT_BLACK, bg_color);
+                  image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, backspace, TFT_BLACK, bg_color);
                 }
                 else if(!strcmp(str[x + y * cols], ":shift:")) {
-                  image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, shift, TFT_BLACK, bg_color);
+                  image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, shift, TFT_BLACK, bg_color);
                 }
                 else if(!strcmp(str[x + y * cols], ":change:")) {
-                  image_8x8_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, change_keyboard, TFT_BLACK, bg_color);
+                  image_from_bits(left_x + x * width / cols + 6, top_y + (y + 0.5) * height / rows - 4, change_keyboard, TFT_BLACK, bg_color);
                 }
                 else {
                   tft.setTextColor(TFT_BLACK, bg_color);
@@ -5314,7 +6127,7 @@ void save_brightness() {
   write_file_from_buff("/Settings/Brightness", buff);
 }
 
-void image_8x8_from_bits(int start_x, int start_y, char *image, int color, int bg_color) {
+void image_from_bits(int start_x, int start_y, char *image, int color, int bg_color) {
   int byte_index, bit_index;
   int x, y;
   char bit;
@@ -5322,7 +6135,7 @@ void image_8x8_from_bits(int start_x, int start_y, char *image, int color, int b
   int height = (int)image[1];
   for(y = 0; y < height; y++) {
     for(x = 0; x < width; x++) {
-      byte_index = (x + y * width) / 8 + 2;
+      byte_index = (width - x - 1 + y * width) / 8 + 2;
       bit_index = (x + y * width) % 8;
       bit = image[byte_index] & (1 << bit_index);
       tft.drawPixel(start_x + width - x - 1, start_y + y, bit ? color : bg_color);
@@ -5388,7 +6201,7 @@ void setup() {
   }
 
   if(calibration_required) {
-    touch_calibration(1, NULL);
+    touch_calibration(APP_MODE_LAUNCH, NULL);
   }
 
   // Тут можно задавать вопросы - сенсор откалиброван
@@ -5424,9 +6237,9 @@ void setup() {
 #endif
 
   // Отлаживаемая функция
-  //files(1, NULL);
+  //files(APP_MODE_LAUNCH, NULL);
 }
 
 void loop() {
-  apps[0](1, NULL);
+  apps[0](APP_MODE_LAUNCH, NULL);
 }

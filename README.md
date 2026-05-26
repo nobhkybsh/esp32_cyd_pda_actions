@@ -10,12 +10,12 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 * It uses internal Flash for files storage. FFat as filesystem.
 * You can add your own internal apps by modifying arduino code.
 
+# Installation via web flasher
+* https://sau412.github.io/esp32_cyd_pda/flash
+
 # Required libraries
 * TFT_eSPI - install via arduino library manager
 * XPT2046_Touchscreen - install via arduino library manager
-
-# Installation via web flasher
-* https://sau412.github.io/esp32_cyd_pda/flash
 
 # Installation via Arduino
 * Install Arduino IDE
@@ -29,8 +29,8 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32-2432s028r/ if you have troubles.
 
 # First run
-* Format internal storage as FFat when asked
 * Calibrate sensor screen - calibration data stored in a /Settings/Calibration
+* Format internal storage as FFat when asked
 * Done
 
 # Usage
@@ -66,6 +66,9 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Fuzzy clock
 * Weather
 * Chat
+* Books reader
+* Counter
+* I2C Scanner
 
 # Touch sensor calibration
 It uses three-dots linear calibration.

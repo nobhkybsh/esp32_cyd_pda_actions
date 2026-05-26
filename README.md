@@ -65,6 +65,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Gopher browser
 * Fuzzy clock
 * Weather
+* Chat
 
 # Touch sensor calibration
 It uses three-dots linear calibration.
@@ -90,7 +91,6 @@ Ax, Bx, Cx, Ay, By, Cy - correction factors
 It could fix parallelogram distortions.
 
 # To Do
-* App icons
 * Wi-Fi apps
 * PIM apps (todo, contacts, schedule, handwriting notes)
 * SD support

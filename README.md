@@ -70,6 +70,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Books reader
 * Counter
 * I2C Scanner
+* Set clock and timezone
 
 # Touch sensor calibration
 It uses three-dots linear calibration.
@@ -95,7 +96,6 @@ Ax, Bx, Cx, Ay, By, Cy - correction factors
 It could fix parallelogram distortions.
 
 # To Do
-* Wi-Fi apps
 * PIM apps (todo, contacts, schedule, handwriting notes)
 * SD support
 * More games

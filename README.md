@@ -99,7 +99,7 @@ Ax, Bx, Cx, Ay, By, Cy - correction factors
 It could fix parallelogram distortions.
 
 # To Do
-* PIM apps (handwriting notes)
+* PIM apps (calendar, handwriting notes)
 * SD support
 * More games
 * More apps

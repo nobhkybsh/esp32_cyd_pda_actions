@@ -36,6 +36,7 @@
 - Гофер браузер
 - Погода (с настройкой координат)
 - Чат
+- Контакты
 
 Лог разработки:
 2026-03-11 Лаунчер и статическая информация о системе
@@ -67,20 +68,24 @@
 2026-05-22 Исправлен баг с календарём, неточные часы
 2026-05-23 Исправлены баги гофер-браузера, приложение книги
 Sketch uses 1229450 bytes (93%) of program storage space. Maximum is 1310720 bytes.
+
 2026-05-25 Исправлен баг когда сеть по умолчанию вай-фай недоступна, погода и координаты
 2026-05-26 Значки, чат
 Sketch uses 1236154 bytes (94%) of program storage space. Maximum is 1310720 bytes.
-2026-05-27 Настройка времени, часового пояса, немного звуков
+
+2026-05-27 Настройка времени, часового пояса, немного звуков, работа часов без интернета
+2026-05-28 Текст справа в списке, общая PIM-функция, контакты, дела, расходы, баг в чате
+Sketch uses 1244114 bytes (94%) of program storage space. Maximum is 1310720 bytes.
+Global variables use 51704 bytes (15%) of dynamic memory, leaving 275976 bytes for local variables. Maximum is 327680 bytes.
+
+Убрать мигание чата
 
 Направления работы:
-- Рисование с сохранением
 - Русский шрифт маленький и средний
 - Русская клавиатура
 - Вывод русского из UTF-8
-- Контакты
+- Рисование с сохранением
 - Расписание (календарь)
-- Список дел
-- Расходы
 
 Затем игры:
 - Змейка
@@ -89,8 +94,6 @@ Sketch uses 1236154 bytes (94%) of program storage space. Maximum is 1310720 byt
 - Повтор последовательности
 - Турецкий платок
 */
-
-//#define ONE_FUNCTION_MODE
 
 #define IS_WIFI_ENABLED
 
@@ -235,21 +238,18 @@ int global_day_of_week = 0;
 char global_is_lap_year = 0;
 
 void launcher(char mode, char *io_buff);
-#ifndef ONE_FUNCTION_MODE
 void calculator(char mode, char *io_buff);
 void system_info(char mode, char *io_buff);
 void files(char mode, char *io_buff);
 void keyboard(char mode, char *io_buff);
 void torch(char mode, char *io_buff);
 void draw(char mode, char *io_buff);
-#endif
 #ifdef IS_WIFI_ENABLED
 void wifi(char mode, char *io_buff);
 void gopher(char mode, char *io_buff);
 void chat(char mode, char *io_buff);
 void weather(char mode, char *io_buff);
 #endif
-#ifndef ONE_FUNCTION_MODE
 void screen_test(char mode, char *io_buff);
 void screensaver(char mode, char *io_buff);
 void touch_calibration(char mode, char *io_buff);
@@ -263,34 +263,38 @@ void breathe(char mode, char *io_buff);
 void brightness_app(char mode, char *io_buff);
 void lights_off(char mode, char *io_buff);
 void notes(char mode, char *io_buff);
+void contacts(char mode, char *io_buff);
 void books(char mode, char *io_buff);
+void todo(char mode, char *io_buff);
+void expenses(char mode, char *io_buff);
 void life(char mode, char *io_buff);
 void i2c_scanner(char mode, char *io_buff);
 void dashboard(char mode, char *io_buff);
 void fuzzy_clock(char mode, char *io_buff);
 void set_clock(char mode, char *io_buff);
-#endif
 
-typedef void (*app_pointer) (char mode, char *io_buff);
+typedef void (*function_application_pointer) (char mode, char *io_buff);
+typedef void (*function_action_pointer) (int action, char *filename);
+typedef void (*function_conversion_pointer) (fs::File file, char *buff);
 
-app_pointer apps[] = {
+function_application_pointer apps[] = {
   launcher,
-#ifndef ONE_FUNCTION_MODE
   calculator,
   files,
   notes,
+  contacts,
+  todo,
+  expenses,
   books,
   system_info,
   torch,
   draw,
-#endif
 #ifdef IS_WIFI_ENABLED
   wifi,
   gopher,
   chat,
   weather,
 #endif
-#ifndef ONE_FUNCTION_MODE
   counter,
   random_numbers,
   timer,
@@ -308,7 +312,6 @@ app_pointer apps[] = {
   dashboard,
   fuzzy_clock,
   set_clock,
-#endif
   NULL
 };
 
@@ -834,7 +837,17 @@ void files(char mode, char *io_buff) {
     }
     while(file = current_dir.openNextFile()) {
       //realloc(files, (file_index + 2) * sizeof(char*));
-      sprintf(buff2, "[%c] %s", file.isDirectory() ? 'd' : 'f', file.name());
+      if(file.isDirectory()) {
+        sprintf(buff2, "%s\t%s", file.name(), "[dir]");
+      }
+      else {
+        if(file.size() > 4096) {
+          sprintf(buff2, "%s\t%dk", file.name(), file.size() / 1024);
+        }
+        else {
+          sprintf(buff2, "%s\t%db", file.name(), file.size());
+        }
+      }
       files[file_index] = (char*)malloc((strlen(buff2) + 1) * sizeof(char));
       strcpy(files[file_index], buff2);
       files[file_index + 1] = NULL;
@@ -1060,28 +1073,68 @@ void files(char mode, char *io_buff) {
   }
 }
 
-#define NOTES_COUNT_MAX 1024
+// ====================================================
+// Заметки
+// ====================================================
+
 #define NOTES_PATH "/Notes"
 
-void notes(char mode, char *io_buff) {
-  fs::File current_dir;
+void notes_action(int action_index, char *filename) {
   fs::File file;
-  int button_pressed;
-  int file_offset;
-  int file_selected;
-  int i;
-  int offset;
   char buff[80];
-  char buff2[80];
-  char buff3[80];
+  if(action_index == 0) {
+    // Редактируем новый файл
+    sprintf(buff, "%s/%s", NOTES_PATH, "__New");
+    file = FFat.open(buff, FILE_WRITE);
+    file.close();
+    edit_file("New note", buff);
+
+    // Меняем название в соответствии с содержимым
+    pim_rename_file(NOTES_PATH, "__New", NULL);
+  }
+  else if(action_index == 1) {
+    // Редактируем существующий файл
+    sprintf(buff, "%s/%s", NOTES_PATH, filename);
+    edit_file("Edit note", buff);
+
+    // Меняем название в соответствии с содержимым
+    pim_rename_file(NOTES_PATH, filename, NULL);
+  }
+  else if(action_index == 2) {
+    if(drawConfirm("Delete this note?") == 0) {
+      // Удаляем заметку с соответствующим названием
+      sprintf(buff, "%s/%s", NOTES_PATH, filename);
+      FFat.remove(buff);
+    }
+  }
+}
+
+void notes_file_to_list(fs::File file, char *buff) {
+  char left[80];
+  char right[80];
   char byte;
-  char update_list_flag = 1;
-  char rename_note_flag = 0;
+  int offset;
+  // Левая колонка - первая непустая строчка файла
+  offset = 0;
+  left[offset] = 0;
+  while(file.available()) {
+    byte = file.read();
+    if(byte == '\n') break;
+    left[offset] = byte;
+    offset++;
+    left[offset] = 0;
+    if(offset > 25) {
+      break;
+    }
+  }
+  sprintf(buff, "%s", left);
+}
+
+void notes(char mode, char *io_buff) {
   char *buttons[] = {
     "New", "Edit", "Delete",
     NULL
   };
-  char **notes_list = NULL;
   char app_icon[] = {
     16, 16,
     B00000000, B00000000,
@@ -1101,8 +1154,6 @@ void notes(char mode, char *io_buff) {
     B01111111, B11111110,
     B00000000, B00000000
   };
-
-
   
   if(mode == APP_MODE_RETURN_NAME) {
     strcpy(io_buff, "Notes");
@@ -1113,176 +1164,431 @@ void notes(char mode, char *io_buff) {
     return;
   }
 
-  // Резервируем память, инициализируем
-  notes_list = (char **)malloc(NOTES_COUNT_MAX * sizeof(char *));
-  for(i = 0; i < NOTES_COUNT_MAX; i++) {
-    notes_list[i] = NULL;
+  pim_app("Notes", NOTES_PATH, notes_file_to_list, buttons, notes_action);
+}
+
+// ====================================================
+// Контакты
+// ====================================================
+
+#define CONTACTS_PATH "/Contacts"
+
+void contacts_action(int action_index, char *filename) {
+  fs::File file;
+  char buff[80];
+  if(action_index == 0) {
+    // Редактируем новый файл
+    sprintf(buff, "%s/%s", CONTACTS_PATH, "__New");
+    file = FFat.open(buff, FILE_WRITE);
+    file.close();
+    edit_file("New contact", buff);
+
+    // Меняем название в соответствии с содержимым
+    pim_rename_file(CONTACTS_PATH, "__New", NULL);
   }
+  else if(action_index == 1) {
+    // Редактируем существующий файл
+    sprintf(buff, "%s/%s", CONTACTS_PATH, filename);
+    edit_file("Edit note", buff);
 
-  update_list_flag = 1;
-  while(1) {
-    // Обновляем список файлов если нужно
-    if(update_list_flag) {
-      clearScreen();
-      drawAppTitle("Notes");
-      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
-      offset = 0;
-      // Освобождаем память
-      for(i = 0; i < NOTES_COUNT_MAX; i++) {
-        if(notes_list[i]) {
-          free(notes_list[i]);
-        }
-        notes_list[i] = NULL;
-      }
-      // Получаем список файлов
-      current_dir = FFat.open(NOTES_PATH);
-      if(!current_dir) {
-        FFat.mkdir(NOTES_PATH);
-        current_dir = FFat.open(NOTES_PATH);
-        if(!current_dir) {
-          drawError("Cannot open notes path");
-          return;
-        }
-      }
-      while(file = current_dir.openNextFile()) {
-        // Пропускаем папки
-        if(file.isDirectory()) continue;
-        notes_list[offset] = (char *)malloc((strlen(file.name()) + 1) * sizeof(char));
-        strcpy(notes_list[offset], file.name());
-        offset++;
-      }
-      update_list_flag = 0;
+    // Меняем название в соответствии с содержимым
+    pim_rename_file(CONTACTS_PATH, filename, NULL);
+  }
+  else if(action_index == 2) {
+    if(drawConfirm("Delete this contact?") == 0) {
+      // Удаляем заметку с соответствующим названием
+      sprintf(buff, "%s/%s", CONTACTS_PATH, filename);
+      FFat.remove(buff);
     }
-
-    tft.setTextColor(TFT_BLACK, TFT_WHITE);
-    tft.drawString("Select note:", 1, 16, FONT_DEFAULT);
-
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, notes_list, 15, &file_offset, &file_selected);
-    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 72, notes_list, 15, &file_offset, &file_selected);
-    drawButtonMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
-
-    touchWaitPress();
-
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, notes_list, 15, &file_offset, &file_selected);
-    button_pressed = touchCheckMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
-    if(button_pressed != -1) {
-      rename_note_flag = 0;
-      if(button_pressed == 0) {
-        // Редактируем новый файл
-        sprintf(buff, "%s/%s", NOTES_PATH, "__NewNote");
-        file = FFat.open(buff, FILE_WRITE);
-        file.close();
-        edit_file("New note", buff);
-
-        // Меняем название в соответствии с содержимым
-        strcpy(buff, "__NewNote");
-        rename_note_flag = 1;
-      }
-      else if(button_pressed == 1) {
-        // Редактируем заметку с соответсвующим названием
-        sprintf(buff, "%s/%s", NOTES_PATH, notes_list[file_selected]);
-        //edit_file(notes_list[file_selected], buff);
-        edit_file(notes_list[file_selected], buff);
-
-        // Меняем название в соответствии с содержимым
-        strcpy(buff, notes_list[file_selected]);
-        rename_note_flag = 1;
-      }
-      else if(button_pressed == 2) {
-        if(drawConfirm("Are you sure to delete note?") == 0) {
-          // Удаляем заметку с соответствующим названием
-          sprintf(buff, "%s/%s", NOTES_PATH, notes_list[file_selected]);
-          FFat.remove(buff);
-        }
-      }
-      
-      // Меняем название в соответствии с содержимым
-      if(rename_note_flag) {
-        // В buff исходное название файла
-        sprintf(buff3, "%s/%s", NOTES_PATH, buff);
-        file = FFat.open(buff3);
-        buff2[0] = 0;
-        offset = 0;
-        while(file.available()) {
-          byte = file.read();
-          if(byte >= '0' && byte <= '9' || byte == ' ' || byte >= 'a' && byte <= 'z' || byte >= 'A' && byte <= 'Z') {
-            buff2[offset] = byte;
-            offset++;
-            buff2[offset] = 0;
-            if(offset > 20) break;
-          }
-          if(byte == '\n' || byte == '\r') break;
-        }
-        // Если названия нет, и это новый файл
-        if(strcmp("", buff2) == 0) {
-          if(strcmp("__NewNote", buff) == 0) {
-            for(i = 1;; i++) {
-              sprintf(buff2, "Note %d", i);
-              sprintf(buff3, "%s/%s", NOTES_PATH, buff2);
-              file = FFat.open(buff3);
-              if(!file) {
-                break;
-              }
-              file.close();
-            }
-          }
-        }
-        // Переименовываем файл если есть название, и оно отличается
-        if(strcmp("", buff2) != 0) {
-          sprintf(buff3, "%s/%s", NOTES_PATH, buff2);
-          sprintf(buff2, "%s/%s", NOTES_PATH, buff);
-          // Проверяем что мы не затрём какой-нибудь файл
-          file = FFat.open(buff3);
-          if(!file) {
-            FFat.rename(buff2, buff3);
-          }
-          else {
-            file.close();
-          }
-        }
-      }
-      update_list_flag = 1;
-    }
-
-    touchWaitReleaseOrExit();
-    if(global_exit_flag) {
-      global_exit_flag = 0;
-      drawAppTitle("Exit");
-      touchWaitRelease();
-      for(i = 0; i < NOTES_COUNT_MAX; i++) {
-        if(notes_list[i]) {
-          free(notes_list[i]);
-        }
-      }
-      free(notes_list);
-      return;
-    }
-    touchWaitRelease();
   }
 }
 
-#define BOOKS_COUNT_MAX 1024
-#define BOOKS_PATH "/Books"
-
-void books(char mode, char *io_buff) {
-  fs::File current_dir;
-  fs::File file;
-  int button_pressed;
-  int file_offset;
-  int file_selected;
-  int i;
-  int offset;
-  char buff[80];
-  char buff2[80];
-  char buff3[80];
+void contacts_file_to_list(fs::File file, char *buff) {
+  char left[80];
+  char right[80];
   char byte;
-  char update_list_flag = 1;
-  char rename_note_flag = 0;
+  int offset;
+  // Первая строчка - имя
+  offset = 0;
+  left[offset] = 0;
+  while(file.available()) {
+    byte = file.read();
+    if(byte == '\n') break;
+    left[offset] = byte;
+    offset++;
+    left[offset] = 0;
+    if(offset > 25) {
+      break;
+    }
+  }
+  // Вторая строчка - телефон (почта, аська, скайп, что угодно)
+  offset = 0;
+  right[offset] = 0;
+  while(file.available()) {
+    byte = file.read();
+    if(byte == '\n') break;
+    right[offset] = byte;
+    offset++;
+    right[offset] = 0;
+    if(offset > 25) {
+      break;
+    }
+  }
+  sprintf(buff, "%s\t%s", left, right);
+}
+
+void contacts(char mode, char *io_buff) {
   char *buttons[] = {
-    "View", "Rename", "Delete",
+    "New", "Edit", "Delete",
     NULL
   };
-  char **books_list = NULL;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000011, B11000010,
+    B01000111, B11100010,
+    B01000111, B11100010,
+    B01000111, B11100010,
+    B01000011, B11000010,
+    B01000001, B10000010,
+    B01000011, B11000010,
+    B01001111, B11110010,
+    B01011111, B11111010,
+    B01011111, B11111010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Contacts");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  pim_app("Contacts", CONTACTS_PATH, contacts_file_to_list, buttons, contacts_action);
+}
+
+// ====================================================
+// Дела
+// ====================================================
+
+#define TODO_PATH "/Todo"
+
+void todo_action(int action_index, char *filename) {
+  fs::File file;
+  char buff[80];
+  char new_filename[80];
+  char old_path_filename[80];
+  char new_path_filename[80];
+  if(action_index == 0) {
+    // Редактируем новый файл
+    sprintf(buff, "%s/%s", TODO_PATH, "__New");
+    file = FFat.open(buff, FILE_WRITE);
+    file.close();
+    edit_file("New todo item", buff);
+
+    // Меняем название в соответствии с содержимым
+    pim_rename_file(TODO_PATH, "__New", "0_");
+  }
+  else if(action_index == 1) {
+    // Переключить отметку
+    strcpy(new_filename, filename);
+    if(filename[0] == '0') {
+      new_filename[0] = '1';
+    }
+    else {
+      new_filename[0] = '0';
+    }
+    sprintf(old_path_filename, "%s/%s", TODO_PATH, filename);
+    sprintf(new_path_filename, "%s/%s", TODO_PATH, new_filename);
+    FFat.rename(old_path_filename, new_path_filename);
+  }
+  else if(action_index == 2) {
+    // Редактируем существующий файл
+    sprintf(buff, "%s/%s", TODO_PATH, filename);
+    edit_file("Edit todo item", buff);
+
+    // Меняем название в соответствии с содержимым
+    pim_rename_file(TODO_PATH, filename, (char*)(filename[0] == '1' ? "1_" : "0_"));
+  }
+  else if(action_index == 3) {
+    if(drawConfirm("Delete this todo item?") == 0) {
+      // Удаляем заметку с соответствующим названием
+      sprintf(buff, "%s/%s", TODO_PATH, filename);
+      FFat.remove(buff);
+    }
+  }
+}
+
+void todo_file_to_list(fs::File file, char *buff) {
+  char left[80];
+  char right[80];
+  char byte;
+  char check = 0;
+  int offset;
+  // Если имя файла начинается с 1 то отметка есть
+  if(file.name()[0] == '1') {
+    check = 1;
+  }
+  // Левая колонка - название
+  offset = 0;
+  left[offset] = 0;
+  while(file.available()) {
+    byte = file.read();
+    if(byte == '\n') break;
+    if(offset <= 25) {
+      left[offset] = byte;
+      offset++;
+      left[offset] = 0;
+    }
+  }
+  // Правая колонка - есть ли что-то кроме названия
+  offset = 0;
+  right[offset] = 0;
+  while(file.available()) {
+    byte = file.read();
+    if(byte == '\n') break;
+    if(offset > 25) {
+      right[offset] = byte;
+      offset++;
+      right[offset] = 0;
+    }
+  }
+  sprintf(buff, "[%c] %s\t%s", check ? 'V' : ' ', left, strlen(right) > 0 ? "+" : "");
+}
+
+void todo(char mode, char *io_buff) {
+  char *buttons[] = {
+    "New", "Toggle", "Edit", "Delete",
+    NULL
+  };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00011010,
+    B01000000, B00011010,
+    B01000000, B00110010,
+    B01000000, B00110010,
+    B01000000, B01100010,
+    B01011000, B01100010,
+    B01001100, B11000010,
+    B01000110, B11000010,
+    B01000011, B11000010,
+    B01000001, B10000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Todo");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  pim_app("Todo", TODO_PATH, todo_file_to_list, buttons, todo_action);
+}
+
+// ====================================================
+// Расходы
+// ====================================================
+
+#define EXPENSES_PATH "/Expenses"
+
+void expenses_action(int action_index, char *filename) {
+  fs::File file;
+  char buff[80];
+  char name[80];
+  float item;
+  if(action_index == 0) {
+    // Добавляем категорию
+    if(drawPrompt("Category name", name) == 0) {
+      sprintf(buff, "%s/%s", EXPENSES_PATH, "__New");
+      file = FFat.open(buff, FILE_WRITE);
+      file.println(name);
+      file.close();
+
+      // Меняем название в соответствии с содержимым
+      pim_rename_file(EXPENSES_PATH, "__New", NULL);
+    }
+  }
+  else if(action_index == 1) {
+    // Добавить расход
+    strcpy(name, "");
+    if(drawPrompt("Expense amount", name) == 0) {
+      sscanf(name, "%f", &item);
+      if(item == 0) {
+        drawError("Expense amount cannot be zero");
+      }
+      else {
+        sprintf(buff, "%s/%s", EXPENSES_PATH, filename);
+        file = FFat.open(buff, FILE_APPEND);
+        file.println(name);
+        file.close();
+      }
+    }
+  }
+  else if(action_index == 2) {
+    if(drawConfirm("Delete this category?") == 0) {
+      // Удаляем заметку с соответствующим названием
+      sprintf(buff, "%s/%s", EXPENSES_PATH, filename);
+      FFat.remove(buff);
+    }
+  }
+}
+
+void expenses_file_to_list(fs::File file, char *buff) {
+  char left[80];
+  char right[80];
+  char byte;
+  int offset;
+  float item;
+  float summ = 0;
+  // Левая колонка - первая непустая строчка файла (название категории)
+  offset = 0;
+  left[offset] = 0;
+  while(file.available()) {
+    byte = file.read();
+    if(byte == '\n') break;
+    if(offset <= 25) {
+      left[offset] = byte;
+      offset++;
+      left[offset] = 0;
+    }
+  }
+  // Суммируем последующие строки
+  offset = 0;
+  right[offset] = 0;
+  summ = 0;
+  while(file.available()) {
+    byte = file.read();
+    right[offset] = byte;
+    offset++;
+    right[offset] = 0;
+    if(byte == '\n') {
+      sscanf(right, "%f", &item);
+      if(item) {
+        summ += item;
+      }
+      offset = 0;
+      right[offset] = 0;
+    }
+  }
+  if(strlen(right) > 0) {
+    sscanf(right, "%f", &item);
+    if(item) {
+      summ += item;
+    }
+  }
+
+  sprintf(buff, "%s\t%0.2f", left, summ);
+}
+
+void expenses(char mode, char *io_buff) {
+  char *buttons[] = {
+    "New", "Expense", "Delete",
+    NULL
+  };
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000001, B10000010,
+    B01001111, B11111010,
+    B01010001, B10000010,
+    B01010001, B10000010,
+    B01001111, B11110010,
+    B01000001, B10001010,
+    B01000001, B10001010,
+    B01000001, B10001010,
+    B01011111, B11110010,
+    B01000001, B10000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+  
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Expenses");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  pim_app("Expenses", EXPENSES_PATH, expenses_file_to_list, buttons, expenses_action);
+}
+
+// ====================================================
+// Книги
+// ====================================================
+
+#define BOOKS_PATH "/Books"
+
+void books_action(int action_index, char *filename) {
+  fs::File file;
+  char buff[80];
+  char new_name[80];
+  char old_path_filename[80];
+  char new_path_filename[80];
+
+  if(action_index == 0) {
+    // Чтение
+    sprintf(buff, "%s/%s", BOOKS_PATH, filename);
+    view_file(filename, buff);
+  }
+  else if(action_index == 1) {
+    // Переименование
+    strcpy(buff, filename);
+    if(drawPrompt("New book name", buff) == 0) {
+      // Если название не пустое
+      if(strcmp(buff, "")) {
+        sprintf(old_path_filename, "%s/%s", BOOKS_PATH, filename);
+        sprintf(new_path_filename, "%s/%s", BOOKS_PATH, buff);
+        FFat.rename(old_path_filename, new_path_filename);
+      }
+    }
+  }
+  else if(action_index == 2) {
+    if(drawConfirm("Delete this book?") == 0) {
+      // Удаляем заметку с соответствующим названием
+      sprintf(buff, "%s/%s", BOOKS_PATH, filename);
+      FFat.remove(buff);
+    }
+  }
+}
+
+void books_file_to_list(fs::File file, char *buff) {
+  char left[80];
+  char right[80];
+  char byte;
+  int offset;
+  if(file.size() > 4096) {
+    sprintf(buff, "%s\t%dk", file.name(), file.size() / 1024);
+  }
+  else {
+    sprintf(buff, "%s\t%d", file.name(), file.size());
+  }
+}
+
+void books(char mode, char *io_buff) {
+  char *buttons[] = {
+    "Read", "Rename", "Delete",
+    NULL
+  };
   char app_icon[] = {
     16, 16,
     B00000000, B00000000,
@@ -1312,10 +1618,52 @@ void books(char mode, char *io_buff) {
     return;
   }
 
+  pim_app("Books", BOOKS_PATH, books_file_to_list, buttons, books_action);
+}
+
+// ====================================================
+// Общие PIM-функции
+// ====================================================
+
+#define PIM_FILES_COUNT_MAX 1000
+// Рисует типичное приложение PIM (заметки, контакты, книги, расходы, дела, рисунки)
+// title - заголовок приложения
+// path - путь к файлам
+// file_to_list_function - функция для преобразования содержимого файла в элемент списка
+// buttons - кнопки действий
+// action_function - функция активации по индексу кнопки
+void pim_app(char *title, char *path, function_conversion_pointer file_to_list_function, char **buttons, function_action_pointer action_function) {
+  fs::File current_dir;
+  fs::File file;
+  int button_pressed;
+  int buttons_count;
+  int file_offset = 0;
+  int file_selected = 0;
+  int i;
+  int offset;
+  char buff[80];
+  char buff2[80];
+  char buff3[80];
+  char left[80];
+  char right[80];
+  char byte;
+  char update_list_flag = 1;
+  char rename_file_flag = 0;
+  char **files_list = NULL;
+  char **visible_list = NULL;
+
+  // Считаем число кнопок
+  buttons_count = 0;
+  while(buttons[buttons_count]) {
+    buttons_count++;
+  }
+
   // Резервируем память, инициализируем
-  books_list = (char **)malloc(NOTES_COUNT_MAX * sizeof(char *));
-  for(i = 0; i < NOTES_COUNT_MAX; i++) {
-    books_list[i] = NULL;
+  files_list = (char **)malloc(PIM_FILES_COUNT_MAX * sizeof(char *));
+  visible_list = (char **)malloc(PIM_FILES_COUNT_MAX * sizeof(char *));
+  for(i = 0; i < PIM_FILES_COUNT_MAX; i++) {
+    files_list[i] = NULL;
+    visible_list[i] = NULL;
   }
 
   update_list_flag = 1;
@@ -1323,72 +1671,56 @@ void books(char mode, char *io_buff) {
     // Обновляем список файлов если нужно
     if(update_list_flag) {
       clearScreen();
-      drawAppTitle("Books");
+      drawAppTitle(title);
       tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
       offset = 0;
       // Освобождаем память
-      for(i = 0; i < NOTES_COUNT_MAX; i++) {
-        if(books_list[i]) {
-          free(books_list[i]);
+      for(i = 0; i < PIM_FILES_COUNT_MAX; i++) {
+        if(files_list[i]) {
+          free(files_list[i]);
+          free(visible_list[i]);
         }
-        books_list[i] = NULL;
+        files_list[i] = NULL;
+        visible_list[i] = NULL;
       }
       // Получаем список файлов
-      current_dir = FFat.open(BOOKS_PATH);
+      current_dir = FFat.open(path);
       if(!current_dir) {
-        FFat.mkdir(BOOKS_PATH);
-        current_dir = FFat.open(BOOKS_PATH);
+        FFat.mkdir(path);
+        current_dir = FFat.open(path);
         if(!current_dir) {
-          drawError("Cannot open notes path");
+          drawError("Cannot open path");
           return;
         }
       }
       while(file = current_dir.openNextFile()) {
         // Пропускаем папки
         if(file.isDirectory()) continue;
-        books_list[offset] = (char *)malloc((strlen(file.name()) + 1) * sizeof(char));
-        strcpy(books_list[offset], file.name());
+        // Читаем файл
+        // Первая строчка - Имя
+        (*file_to_list_function)(file, buff);
+        files_list[offset] = (char *)malloc((strlen(file.name()) + 1) * sizeof(char));
+        visible_list[offset] = (char *)malloc((strlen(buff) + 1) * sizeof(char));
+
+        strcpy(files_list[offset], file.name());
+        strcpy(visible_list[offset], buff);
         offset++;
       }
       update_list_flag = 0;
     }
 
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
-    tft.drawString("Select book:", 1, 16, FONT_DEFAULT);
 
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, books_list, 15, &file_offset, &file_selected);
-    drawList(8, 32, tft.width() - 8 * 2, tft.height() - 72, books_list, 15, &file_offset, &file_selected);
-    drawButtonMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
+    touchCheckList(8, 32 -8, tft.width() - 8 * 2, tft.height() - 72, visible_list, 15, &file_offset, &file_selected);
+    drawList(8, 32 - 8, tft.width() - 8 * 2, tft.height() - 72, visible_list, 15, &file_offset, &file_selected);
+    drawButtonMatrix(0, 280, tft.width(), 40, buttons, buttons_count, 1);
 
     touchWaitPress();
 
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, books_list, 15, &file_offset, &file_selected);
-    button_pressed = touchCheckMatrix(0, 280, tft.width(), 40, buttons, 3, 1);
+    touchCheckList(8, 32 - 8, tft.width() - 8 * 2, tft.height() - 72, visible_list, 15, &file_offset, &file_selected);
+    button_pressed = touchCheckMatrix(0, 280, tft.width(), 40, buttons, buttons_count, 1);
     if(button_pressed != -1) {
-      rename_note_flag = 0;
-      if(button_pressed == 0) {
-        // Читаем книгу
-        sprintf(buff, "%s/%s", BOOKS_PATH, books_list[file_selected]);
-        view_file(books_list[file_selected], buff);
-      }
-      else if(button_pressed == 1) {
-        // Переименовываем
-        sprintf(buff, "%s/%s", BOOKS_PATH, books_list[file_selected]);
-        strcpy(buff2, books_list[file_selected]);
-        drawPrompt("New name", buff2);
-        if(strlen(buff2) > 0 && strcmp(buff2, books_list[file_selected])) {
-          sprintf(buff3, "%s/%s", BOOKS_PATH, buff2);
-          FFat.rename(buff, buff3);
-        }
-      }
-      else if(button_pressed == 2) {
-        // Удаляем
-        if(drawConfirm("Are you sure to delete book?") == 0) {
-          // Удаляем заметку с соответствующим названием
-          sprintf(buff, "%s/%s", BOOKS_PATH, books_list[file_selected]);
-          FFat.remove(buff);
-        }
-      }
+      (*action_function)(button_pressed, files_list[file_selected]);
       update_list_flag = 1;
     }
 
@@ -1397,15 +1729,78 @@ void books(char mode, char *io_buff) {
       global_exit_flag = 0;
       drawAppTitle("Exit");
       touchWaitRelease();
-      for(i = 0; i < NOTES_COUNT_MAX; i++) {
-        if(books_list[i]) {
-          free(books_list[i]);
+      for(i = 0; i < PIM_FILES_COUNT_MAX; i++) {
+        if(files_list[i]) {
+          free(files_list[i]);
+        }
+        if(visible_list[i]) {
+          free(visible_list[i]);
         }
       }
-      free(books_list);
+      free(files_list);
+      free(visible_list);
       return;
     }
     touchWaitRelease();
+  }
+}
+
+// Переименовывает файл в соответствии с содержимым
+void pim_rename_file(char *path, char *old_filename, char *prefix) {
+  fs::File file;
+  char old_path_filename[80];
+  char new_path_filename[80];
+  char new_filename[80];
+  char byte;
+  int offset;
+
+  sprintf(old_path_filename, "%s/%s", path, old_filename);
+  file = FFat.open(old_path_filename);
+  new_filename[0] = 0;
+  offset = 0;
+  while(file.available()) {
+    byte = file.read();
+    // Если уже хоть что-то в названии есть - достаточно
+    if(offset > 0 && (byte == '\n' || byte == '\r')) {
+      break;
+    }
+    // Только алфавитно-цифровые символы
+    if(byte >= '0' && byte <= '9' || byte == ' ' || byte >= 'a' && byte <= 'z' || byte >= 'A' && byte <= 'Z') {
+      // Пробел меняем на подчёркивание
+      if(byte == ' ') byte = '_';
+      new_filename[offset] = byte;
+      offset++;
+      new_filename[offset] = 0;
+      if(offset > 20) break;
+    }
+    if(byte == '\n' || byte == '\r') break;
+  }
+
+  // Если название не сформировалось даём ему первый свободный цифровой номер
+  if(strcmp("", new_filename) == 0) {
+    for(offset = 1;; offset++) {
+      sprintf(new_filename, "%d", offset);
+      sprintf(new_path_filename, "%s/%s%s", path, prefix ? prefix : "", new_filename);
+      file = FFat.open(new_path_filename);
+      if(!file) {
+        break;
+      }
+      file.close();
+    }
+  }
+
+  // Переименовываем файл если есть новое название, и оно отличается
+  if(strcmp("", new_filename) != 0 && strcmp(old_filename, new_filename)) {
+    sprintf(new_path_filename, "%s/%s%s", path, prefix ? prefix : "", new_filename);
+    // Проверяем что мы не затрём какой-нибудь файл
+    file = FFat.open(new_path_filename);
+    if(!file) {
+      // И только тогда переименовываем
+      FFat.rename(old_path_filename, new_path_filename);
+    }
+    else {
+      file.close();
+    }
   }
 }
 
@@ -3902,6 +4297,11 @@ void chat(char mode, char *io_buff) {
             tft.drawString(buff, 1, 20 + screen_line * 8, FONT_MONOSPACE);
             screen_line++;
             buff_offset = 0;
+            // Не терять последний символ в строке
+            if(strlen(buff) >= 40) {
+              buff[buff_offset] = messages[messages_offset];
+              buff_offset++;
+            }
             buff[buff_offset] = 0;
             if(screen_line == 32) break;
             continue;
@@ -6254,6 +6654,8 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
   char is_eol = 0;
   char up[] = " [scroll up] ";
   char down[] = " [scroll down] ";
+  char left[80];
+  char right[80];
   // Для прокрутки нужно знать количество строк
   for(last_row = 0; str[last_row] != NULL; last_row++) {}
   last_row--;
@@ -6263,6 +6665,13 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
   }
   if(*offset < 0) {
     *offset = 0;
+  }
+
+  // Пустой список - показываем что тут мог быть список
+  if(str[0] == NULL) {
+    tft.setTextColor(TFT_LIGHTGREY, TFT_WHITE);
+    tft.drawString("<empty list>", left_x + 1, top_y + (0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+    return;
   }
 
   for(y = 0; y < rows_to_show; y++) {
@@ -6286,7 +6695,14 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
         else {
           tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
         }
-        tft.drawString(str[y + *offset], left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+        getListItemParts(str[y + *offset], left, right);
+        if(!strcmp(left, "") && !strcmp(right, "")) {
+          tft.drawString("<empty>", left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+        }
+        else {
+          tft.drawString(left, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+          tft.drawRightString(right, left_x + width - 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+        }
       }
       else {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
@@ -6296,6 +6712,18 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
     else {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
     }
+  }
+}
+
+void getListItemParts(char *item, char *left, char *right) {
+  char *tab_ptr;
+  int left_flag = 1;
+  strcpy(left, item);
+  strcpy(right, "");
+  tab_ptr = strchr(left, '\t');
+  if(tab_ptr) {
+    *tab_ptr = 0;
+    strcpy(right, tab_ptr + 1);
   }
 }
 

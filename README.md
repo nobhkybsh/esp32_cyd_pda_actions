@@ -75,29 +75,6 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Expenses
 * Drawing (with saving BMP)
 
-# Touch sensor calibration
-It uses three-dots linear calibration.
-
-You touch three specific dots (should not be on one line).
-
-Then it solves two systems of linear equations:
-
-````
-Ax * xt1 + Bx * yt1 + Cx = xs1
-Ax * xt2 + Bx * yt2 + Cx = xs2
-Ax * xt3 + Bx * yt3 + Cx = xs3
-
-Ay * xt1 + By * yt1 + Cy = ys1
-Ay * xt2 + By * yt2 + Cy = ys2
-Ay * xt3 + By * yt3 + Cy = ys3
-
-Ax, Bx, Cx, Ay, By, Cy - correction factors
-(xt1, yt1), (xt2, yt2), (xt3, yt3) - touchscreen points
-(xs1, ys1), (xs2, ys2), (xs3, ys3) - screen points
-````
-
-It could fix parallelogram distortions.
-
 # To Do
 * Schedule app
 * SD support

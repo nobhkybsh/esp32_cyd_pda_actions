@@ -7,6 +7,7 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 
 # Details
 * No additional hardware required. All you need is CYD
+* But if you have a speaker it can beep on events
 * It uses internal Flash for files storage. FFat as filesystem.
 * You can add your own internal apps by modifying arduino code.
 

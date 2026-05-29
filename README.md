@@ -73,7 +73,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Contacts
 * Todo
 * Expenses
-* Drawing (with saving)
+* Drawing (with saving BMP)
 
 # Touch sensor calibration
 It uses three-dots linear calibration.

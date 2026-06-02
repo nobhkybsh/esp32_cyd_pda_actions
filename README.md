@@ -75,9 +75,9 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Todo
 * Expenses
 * Drawing (with saving BMP)
+* Schedule
 
 # To Do
-* Schedule app
 * SD support
 * More games
 * More apps

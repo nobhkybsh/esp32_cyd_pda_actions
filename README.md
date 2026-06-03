@@ -45,37 +45,42 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 
 # Applications/Functions
 * File management (with viewing and editing support)
-* Notes
 * Touch sensor calibration
 * TFT screen test
 * Random number generator
 * System info
 * Password
 * LED control
-* Calculator
-* Fifteen puzzle game - see https://en.wikipedia.org/wiki/15_puzzle for details
 * Screensaver
 * Stopwatch
 * Timer
 * Breathing timer
 * Brightness
-* Lights Off puzzle game - see https://en.wikipedia.org/wiki/Lights_Out_(game) for details
 * Life (cellular automaton) - see https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life for details
-* Wi-Fi connection
 * Clock stand
-* Gopher browser - see https://ru.wikipedia.org/wiki/Gopher for details
 * Fuzzy clock
-* Weather
-* Chat
-* Books reader
 * Counter
 * I2C Scanner
 * Set clock and timezone
+## PIM apps
+* Calculator
+* Notes
+* Books reader
 * Contacts
 * Todo
 * Expenses
 * Drawing (with saving BMP)
 * Schedule
+
+## Games
+* Fifteen puzzle game - see https://en.wikipedia.org/wiki/15_puzzle for details
+* Lights Off puzzle game - see https://en.wikipedia.org/wiki/Lights_Out_(game) for details
+
+## Wi-Fi
+* Wi-Fi connection
+* Gopher browser - see https://ru.wikipedia.org/wiki/Gopher for details
+* Weather
+* Chat
 
 # To Do
 * SD support

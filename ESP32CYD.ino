@@ -3,7 +3,7 @@
 
 Предположения:
 - Ориентация экрана вертикальная
-- ФС FFat
+- ФС FFat/SD
 - Папка настроек /Settings
 
 Функции:
@@ -88,44 +88,54 @@ Sketch uses 1246406 bytes (95%) of program storage space. Maximum is 1310720 byt
 2026-05-31 Русский шрифт, частично
 2026-06-01 Русский шрифт доработки, расписание
 2026-06-02 Русский шрифт доработки, PIM список по ширине экрана, улучшение счётчика, улучшение информации о системе, ускорение сохранения картинок
-
-Баг с выводом списка, иногда надпись выбивается
+Sketch uses 1252190 bytes (95%) of program storage space. Maximum is 1310720 bytes.
+2026-06-03 Баг со сдвигом на пиксель в списках, баг в просмотре файлов, улучшение рисования, баг в расходах при ручном вводе,
+  бип на новые сообщения в чате, баги и улучшения калькулятора, улучшения случайных чисел, поддержка SD как хранилища
 
 Направления работы:
 - Русский шрифт маленький
-- Вывод русского из UTF-8
-
-Улучшения тут и там:
-- В файловом менеджере открывать папки / файлы по двойному нажатию
-- Не прокручивать при редактировании дальше конца файла
-- Калькулятор: индикация числа в памяти, второго аргумента, операции
-- Точки и нули в конце числа при вводе числа в калькулятор
-- Расходы: баги с переносами при ручном редактировании
-- Книги: сохранять место чтения
-- Чат: бип на получение новых сообщений
-- Погода: символ граудса или цельсия возле температуры (выглядит ужасно если взять другой шрифт. Нужно другое решение)
-- Случайные числа: может быть другая анимация, больше цифры
-- Prompt - прокрутка текста, возможность переставлять курсор
-- Код чата (на сервере) в гитхаб
-- Гофер браузер - менять домашнюю страницу
-- Гофер браузер - специальная домашняя страница для CYD с объяснениями
-- Гофер браузер - баг с повторяющимися строками?
-- Гофер браузер - кнопка назад
-- Рисование - лишние линии при поднятии стилуса
-- Использовать RTC-память для времени
-- Расписание: выводить планы на день по первому нажатию, редактирование по второму или двойному
-
-Затем игры:
+- Ключ-значение чтение и запись
 - Змейка
 - Тетрис
 - Карточки на память (как Masterbrain)
 - Повтор последовательности
 - Турецкий платок
+
+F
+01111111
+00001001
+00001001
+00001001
+00000001
+
+0x38, 0x44, 0x44, 0x44, 0x28
+00111000
+01000100
+01000100
+01000100
+00101000
+
+Улучшения тут и там:
+- В файловом менеджере открывать папки / файлы по двойному нажатию
+- Не прокручивать при редактировании дальше конца файла
+- Книги: сохранять место чтения
+- Погода: символ градуса или цельсия возле температуры (выглядит ужасно если взять другой шрифт. Нужно другое решение)
+- Prompt - прокрутка текста, возможность переставлять курсор
+- Гофер браузер - менять домашнюю страницу
+- Гофер браузер - специальная домашняя страница для CYD с объяснениями
+- Гофер браузер - баг с повторяющимися строками?
+- Гофер браузер - кнопка назад
+- Расписание: выводить планы на день по первому нажатию, редактирование по второму или двойному
+- Калькулятор: кнопка % ничего не делает
+- Рисование: на SD не сохраняется картинка
+
 */
 
 //#define ALT_KEYBOARD_ENABLED
 
 #define IS_WIFI_ENABLED
+
+#define USE_SD_AS_STORAGE
 
 #include <SPI.h>
 #include <TFT_eSPI.h>
@@ -133,6 +143,7 @@ Sketch uses 1246406 bytes (95%) of program storage space. Maximum is 1310720 byt
 
 #include "FS.h"
 #include "FFat.h"
+#include "SD.h"
 #include <Wire.h>
 
 #ifdef IS_WIFI_ENABLED
@@ -157,19 +168,6 @@ TFT_eSPI tft = TFT_eSPI();
 #define BACKLIGHT_LED 21
 #define LIGHT_SENSOR 34
 
-SPIClass touchscreenSPI = SPIClass(VSPI);
-XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
-
-#define SCREEN_WIDTH tft.width()
-#define SCREEN_HEIGHT tft.height()
-
-#define FONT_MONOSPACE 1
-#define FONT_DEFAULT 2
-#define FONT_BIG 4
-#define FONT_BIGGER 6
-#define FONT_BIG_SEGMENT 7
-#define FONT_BIGGEST 8
-
 #define LED_RED 4
 #define LED_GREEN 16
 #define LED_BLUE 17
@@ -179,9 +177,34 @@ XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
 
 #define BUZZER_PIN 26
 
+// SD SPI pins
+#define SD_CS   5
+#define SD_SCK 18
+#define SD_MISO 19
+#define SD_MOSI 23
+
+SPIClass sdSPI(HSPI);
+SPIClass touchscreenSPI = SPIClass(VSPI);
+XPT2046_Touchscreen touchscreen(XPT2046_CS, XPT2046_IRQ);
+
+#define FONT_MONOSPACE 1
+#define FONT_DEFAULT 2
+#define FONT_BIG 4
+#define FONT_BIGGER 6
+#define FONT_BIG_SEGMENT 7
+#define FONT_BIGGEST 8
+
 #define APP_MODE_LAUNCH 1
 #define APP_MODE_RETURN_NAME 0
 #define APP_MODE_RETURN_ICON 2
+
+#ifdef USE_SD_AS_STORAGE
+#define Storage SD
+//FS Storage = SD; 
+#else
+#define Storage FFat
+//FS Storage = FFat;
+#endif
 
 char enter[] = {
   8, 8,
@@ -449,13 +472,11 @@ void calculator(char mode, char *io_buff) {
   double a = 0;
   double b = 0;
   double m = 0;
-  double multiplier_a;
-  double multiplier_b;
 
   char screen[20];
+  char buff[20];
   char error_flag = 0;
   char dot_flag = 0;
-  int dot_power = 0;
   char op = '=';
   char clear_on_input = 0;
   char *buttons[] = {
@@ -498,23 +519,31 @@ void calculator(char mode, char *io_buff) {
   clearScreen();
   drawAppTitle("Calculator");
 
-  drawButtonMatrix(0, 80, tft.width(), 240, buttons, 5, 5);
-  if(error_flag) {
-    strcpy(screen, "Error");
-  }
-  else {
-    sprintf(screen, "%g", a);
-  }
-  tft.fillRect(0, 40, tft.width(), 32, TFT_WHITE);
-  tft.setTextColor(TFT_BLACK, TFT_WHITE);
-  tft.drawRightString(screen, tft.width() - 16, 40, FONT_BIG);
+  strcpy(screen, "0");
 
   while(1) {
+    tft.fillRect(0, 16, tft.width(), 80 - 16, TFT_WHITE);
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    if(error_flag) {
+      strcpy(screen, "Error");
+    }
+    tft.drawRightString(screen, tft.width() - 16, 40, FONT_BIG);
+
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    if(m != 0) {
+      sprintf(buff, "M = %lg", m);
+      tft.drawString(buff, 1, 16, FONT_DEFAULT);
+    }
+    if(op != '=') {
+      sprintf(buff, "%lg %c", b, op);
+      tft.drawRightString(buff, tft.width() - 1, 16, FONT_DEFAULT);
+    }
+
+    drawButtonMatrix(0, 80, tft.width(), 240, buttons, 5, 5);
+
     touchWaitPress();
     button_pressed = touchCheckMatrix(0, 80, tft.width(), 240, buttons, 5, 5);
     if(button_pressed != -1) {
-      drawButtonMatrix(0, 80, tft.width(), 240, buttons, 5, 5);
-      
       if(!error_flag) {
         // MC
         if(button_pressed == 0) {
@@ -524,6 +553,7 @@ void calculator(char mode, char *io_buff) {
         if(button_pressed == 5) {
           a = m;
           clear_on_input = 1;
+          sprintf(screen, "%lg", a);
         }
         // M+
         if(button_pressed == 10) {
@@ -540,9 +570,13 @@ void calculator(char mode, char *io_buff) {
             a = sqrt(a);
           }
           clear_on_input = 1;
+          sprintf(screen, "%lg", a);
         }
         // +/-
-        if(button_pressed == 3) a = -a;
+        if(button_pressed == 3) {
+          a = -a;
+          sprintf(screen, "%lg", a);
+        }
         // 1/x
         if(button_pressed == 4) {
           if(a == 0) {
@@ -552,7 +586,9 @@ void calculator(char mode, char *io_buff) {
             a = 1 / a;
           }
           clear_on_input = 1;
+          sprintf(screen, "%lg", a);
         }
+        // Цифровые кнопки
         if(button_pressed == 6 || button_pressed == 7 || button_pressed == 8
           || button_pressed == 11 || button_pressed == 12 || button_pressed == 13
           || button_pressed == 16 || button_pressed == 17 || button_pressed == 18
@@ -562,42 +598,34 @@ void calculator(char mode, char *io_buff) {
             a = 0;
             dot_flag = 0;
             clear_on_input = 0;
+            strcpy(screen, "0");
           }
-          multiplier_a = 10;
-          multiplier_b = 1;
-          if(dot_flag) {
-            multiplier_a = 1;
-            multiplier_b = 1 / pow(10, dot_power);
+          if(strlen(screen) < 14) {
+            // Строка не "0" или добавляем не 0
+            if(strcmp(screen, "0")) {
+              strcat(screen, buttons[button_pressed]);
+            }
+            else {
+              strcpy(screen, buttons[button_pressed]);
+            }
           }
-
-          if(button_pressed == 6) { a = a * multiplier_a + 7 * multiplier_b; }
-          if(button_pressed == 7) { a = a * multiplier_a + 8 * multiplier_b; }
-          if(button_pressed == 8) { a = a * multiplier_a + 9 * multiplier_b; }
-          if(button_pressed == 11) { a = a * multiplier_a + 4 * multiplier_b; }
-          if(button_pressed == 12) { a = a * multiplier_a + 5 * multiplier_b; }
-          if(button_pressed == 13) { a = a * multiplier_a + 6 * multiplier_b; }
-          if(button_pressed == 16) { a = a * multiplier_a + 1 * multiplier_b; }
-          if(button_pressed == 17) { a = a * multiplier_a + 2 * multiplier_b; }
-          if(button_pressed == 18) { a = a * multiplier_a + 3 * multiplier_b; }
-          if(button_pressed == 21) { a = a * multiplier_a + 0 * multiplier_b; }
-
-          if(dot_flag) {
-            dot_power ++;
-          }
+          sscanf(screen, "%lf", &a);
         }
 
-        // Деление
+        // Операции
         if(button_pressed == 9 || button_pressed == 14 || button_pressed == 19
-          || button_pressed == 14 || button_pressed == 23 || button_pressed == 24
+          || button_pressed == 23 || button_pressed == 24
         ) {
-          if(op == '=') b = a;
+          // Выполнить предыдущую операцию
           if(op == '+') a = b + a;
           if(op == '-') a = b - a;
           if(op == '*') a = b * a;
           if(op == '/') a = b / a;
           b = a;
+          sprintf(screen, "%lg", a);
           clear_on_input = 1;
 
+          // Запомнить следующую операцию
           if(button_pressed == 9) {
             op = '/';
           }
@@ -620,6 +648,7 @@ void calculator(char mode, char *io_buff) {
         a = 0;
         error_flag = 0;
         dot_flag = 0;
+        strcpy(screen, "0");
       }
       // C
       if(button_pressed == 20) {
@@ -629,21 +658,16 @@ void calculator(char mode, char *io_buff) {
         op = '=';
         clear_on_input = 0;
         dot_flag = 0;
+        strcpy(screen, "0");
       }
       // Десятичная точка
       if(button_pressed == 22 && dot_flag == 0) {
         dot_flag = 1;
-        dot_power = 1;
+        if(strlen(screen) < 14) {
+          strcat(screen, buttons[button_pressed]);
+        }
+        sscanf(screen, "%lf", &a);
       }
-      if(error_flag) {
-        strcpy(screen, "Error");
-      }
-      else {
-        sprintf(screen, "%g", a);
-      }
-      tft.fillRect(0, 40, tft.width(), 32, TFT_WHITE);
-      tft.setTextColor(TFT_BLACK, TFT_WHITE);
-      tft.drawRightString(screen, tft.width() - 16, 40, FONT_BIG);
     }
 
     touchWaitReleaseOrExit();
@@ -750,11 +774,27 @@ void system_info(char mode, char *io_buff) {
     tft.drawString(buff, 2, 16 + i * 16, FONT_DEFAULT);
     i++;
 
-    sprintf(buff, "FFat Total: %d bytes ", FFat.totalBytes());
+    if(Storage.totalBytes() > 1024 * 1024) {
+      sprintf(buff, "Storage Total: %d MiB ", Storage.totalBytes() / (1024 * 1024));
+    }
+    else if(Storage.totalBytes() > 1024) {
+      sprintf(buff, "Storage Total: %d kiB ", Storage.totalBytes() / (1024));
+    }
+    else {
+      sprintf(buff, "Storage Total: %d bytes ", Storage.totalBytes());
+    }
     tft.drawString(buff, 2, 16 + i * 16, FONT_DEFAULT);
     i++;
 
-    sprintf(buff, "FFat Used: %d bytes (%d%%) ", FFat.usedBytes(), (int)floor(100 * FFat.usedBytes() / FFat.totalBytes()));
+    if(Storage.usedBytes() > 1024 * 1024) {
+      sprintf(buff, "Storage Used: %d MiB (%d%%) ", Storage.usedBytes() / (1024 * 1024), (int)floor(100 * Storage.usedBytes() / Storage.totalBytes()));
+    }
+    else if(Storage.usedBytes() > 1024) {
+      sprintf(buff, "Storage Used: %d kiB (%d%%) ", Storage.usedBytes() / (1024), (int)floor(100 * Storage.usedBytes() / Storage.totalBytes()));
+    }
+    else {
+      sprintf(buff, "Storage Used: %d bytes (%d%%) ", Storage.usedBytes(), (int)floor(100 * Storage.usedBytes() / Storage.totalBytes()));
+    }
     tft.drawString(buff, 2, 16 + i * 16, FONT_DEFAULT);
     i++;
 
@@ -858,7 +898,7 @@ void files(char mode, char *io_buff) {
     }
 
     // Список файлов
-    current_dir = FFat.open(path);
+    current_dir = Storage.open(path);
     file_index = 0;
 
     if (!current_dir) {
@@ -867,13 +907,15 @@ void files(char mode, char *io_buff) {
     }
     if (!current_dir.isDirectory()) {
       drawError("Not a directory");
+#ifndef USE_SD_AS_STORAGE
       if(!strcmp("/", path)) {
-        if(drawConfirm("Format FFat?") == 0) {
+        if(drawConfirm("Format storage?") == 0) {
           FFat.format();
           FFat.begin(FORMAT_FS_IF_FAILED);
-          FFat.mkdir("/Settings");
+          Storage.mkdir("/Settings");
         }
       }
+#endif
       return;
     }
 
@@ -934,7 +976,7 @@ void files(char mode, char *io_buff) {
     current_op = touchCheckMatrix(0, 240, tft.width(), 80, file_operations, 4, 2);
     if(current_op != -1) {
       // Находим нужный файл
-      current_dir = FFat.open(path);
+      current_dir = Storage.open(path);
       file_index = 0;
       if(strcmp(path, "/")) {
         file_index++;
@@ -950,7 +992,7 @@ void files(char mode, char *io_buff) {
         drawPrompt("New file name", user_input);
         if(strlen(user_input) > 0) {
           sprintf(buff2, "%s%s", path, user_input);
-          file = FFat.open(buff2, FILE_WRITE);
+          file = Storage.open(buff2, FILE_WRITE);
           if (!file) {
             drawAlert("Failed to create new file");
             return;
@@ -1006,7 +1048,7 @@ void files(char mode, char *io_buff) {
         if(strlen(user_input) != 0) {
           sprintf(buff3, "%s%s", path, file.name());
           sprintf(buff4, "%s%s", path, user_input);
-          if(!FFat.rename(buff3, buff4)) {
+          if(!Storage.rename(buff3, buff4)) {
             drawAlert("Rename failed");
             drawInfo(buff3);
             drawInfo(buff4);
@@ -1018,7 +1060,7 @@ void files(char mode, char *io_buff) {
         strcpy(user_input, "");
         drawPrompt("New directory name", user_input);
         sprintf(buff3, "%s%s", path, user_input);
-        if (!FFat.mkdir(buff3)) {
+        if (!Storage.mkdir(buff3)) {
           drawAlert("Failed to create new directory");
           return;
         }
@@ -1043,7 +1085,7 @@ void files(char mode, char *io_buff) {
           }
           else {
             // Если это папка нужно добавить '/' и имя файла
-            current_dir = FFat.open(user_input);
+            current_dir = Storage.open(user_input);
             if(current_dir) {
               if(current_dir.isDirectory()) {
                 sprintf(buff4, "%s/%s", user_input, file.name());
@@ -1054,8 +1096,8 @@ void files(char mode, char *io_buff) {
           }
 
           // Копирование
-          file = FFat.open(buff3);
-          file_copy = FFat.open(buff4, FILE_WRITE);
+          file = Storage.open(buff3);
+          file_copy = Storage.open(buff4, FILE_WRITE);
           if(!file) {
             drawAlert("Cannot open source file");
           }
@@ -1092,14 +1134,14 @@ void files(char mode, char *io_buff) {
           }
           else {
             // Если это папка нужно добавить '/' и имя файла
-            current_dir = FFat.open(user_input);
+            current_dir = Storage.open(user_input);
             if(current_dir && current_dir.isDirectory()) {
               sprintf(buff4, "%s/%s", user_input, file.name());
             }
             current_dir.close();
           }
           sprintf(buff4, "%s", user_input);
-          if(!FFat.rename(buff3, buff4)) {
+          if(!Storage.rename(buff3, buff4)) {
             drawAlert("Rename failed");
             drawInfo(buff3);
             drawInfo(buff4);
@@ -1111,10 +1153,10 @@ void files(char mode, char *io_buff) {
         if(drawConfirm("Delete file?") == 0) {
           sprintf(buff3, "%s%s", path, file.name());
           if(file.isDirectory()) {
-            FFat.rmdir(buff3);
+            Storage.rmdir(buff3);
           }
           else {
-            FFat.remove(buff3);
+            Storage.remove(buff3);
           }
           current_op = -1;
           file_selected = 0;
@@ -1153,7 +1195,7 @@ void notes_action(int action_index, char *filename) {
   if(action_index == 0) {
     // Редактируем новый файл
     sprintf(buff, "%s/%s", NOTES_PATH, "__New");
-    file = FFat.open(buff, FILE_WRITE);
+    file = Storage.open(buff, FILE_WRITE);
     file.close();
     edit_file("New note", buff);
 
@@ -1172,7 +1214,7 @@ void notes_action(int action_index, char *filename) {
     if(drawConfirm("Delete this note?") == 0) {
       // Удаляем заметку с соответствующим названием
       sprintf(buff, "%s/%s", NOTES_PATH, filename);
-      FFat.remove(buff);
+      Storage.remove(buff);
     }
   }
 }
@@ -1247,7 +1289,7 @@ void contacts_action(int action_index, char *filename) {
   if(action_index == 0) {
     // Редактируем новый файл
     sprintf(buff, "%s/%s", CONTACTS_PATH, "__New");
-    file = FFat.open(buff, FILE_WRITE);
+    file = Storage.open(buff, FILE_WRITE);
     file.close();
     edit_file("New contact", buff);
 
@@ -1266,7 +1308,7 @@ void contacts_action(int action_index, char *filename) {
     if(drawConfirm("Delete this contact?") == 0) {
       // Удаляем заметку с соответствующим названием
       sprintf(buff, "%s/%s", CONTACTS_PATH, filename);
-      FFat.remove(buff);
+      Storage.remove(buff);
     }
   }
 }
@@ -1357,7 +1399,7 @@ void todo_action(int action_index, char *filename) {
   if(action_index == 0) {
     // Редактируем новый файл
     sprintf(buff, "%s/%s", TODO_PATH, "__New");
-    file = FFat.open(buff, FILE_WRITE);
+    file = Storage.open(buff, FILE_WRITE);
     file.close();
     edit_file("New todo item", buff);
 
@@ -1375,7 +1417,7 @@ void todo_action(int action_index, char *filename) {
     }
     sprintf(old_path_filename, "%s/%s", TODO_PATH, filename);
     sprintf(new_path_filename, "%s/%s", TODO_PATH, new_filename);
-    FFat.rename(old_path_filename, new_path_filename);
+    Storage.rename(old_path_filename, new_path_filename);
   }
   else if(action_index == 2) {
     // Редактируем существующий файл
@@ -1389,7 +1431,7 @@ void todo_action(int action_index, char *filename) {
     if(drawConfirm("Delete this todo item?") == 0) {
       // Удаляем заметку с соответствующим названием
       sprintf(buff, "%s/%s", TODO_PATH, filename);
-      FFat.remove(buff);
+      Storage.remove(buff);
     }
   }
 }
@@ -1483,7 +1525,7 @@ void expenses_action(int action_index, char *filename) {
     // Добавляем категорию
     if(drawPrompt("Category name", name) == 0) {
       sprintf(buff, "%s/%s", EXPENSES_PATH, "__New");
-      file = FFat.open(buff, FILE_WRITE);
+      file = Storage.open(buff, FILE_WRITE);
       file.println(name);
       file.close();
 
@@ -1501,7 +1543,7 @@ void expenses_action(int action_index, char *filename) {
       }
       else {
         sprintf(buff, "%s/%s", EXPENSES_PATH, filename);
-        file = FFat.open(buff, FILE_APPEND);
+        file = Storage.open(buff, FILE_APPEND);
         file.println(name);
         file.close();
       }
@@ -1511,7 +1553,7 @@ void expenses_action(int action_index, char *filename) {
     if(drawConfirm("Delete this category?") == 0) {
       // Удаляем заметку с соответствующим названием
       sprintf(buff, "%s/%s", EXPENSES_PATH, filename);
-      FFat.remove(buff);
+      Storage.remove(buff);
     }
   }
 }
@@ -1528,7 +1570,13 @@ void expenses_file_to_list(fs::File file, char *buff) {
   left[offset] = 0;
   while(file.available()) {
     byte = file.read();
-    if(byte == '\n') break;
+    if(byte == '\n' && file.peek() == '\r') {
+      file.read();
+    }
+    if(byte == '\r' && file.peek() == '\n') {
+      file.read();
+    }
+    if(byte == '\n' || byte == '\r') break;
     if(offset <= 25) {
       left[offset] = byte;
       offset++;
@@ -1544,7 +1592,14 @@ void expenses_file_to_list(fs::File file, char *buff) {
     right[offset] = byte;
     offset++;
     right[offset] = 0;
-    if(byte == '\n') {
+    if(byte == '\n' && file.peek() == '\r') {
+      file.read();
+    }
+    if(byte == '\r' && file.peek() == '\n') {
+      file.read();
+    }
+    if(byte == '\n' || byte == '\r') {
+      item = 0;
       sscanf(right, "%f", &item);
       if(item) {
         summ += item;
@@ -1626,7 +1681,7 @@ void books_action(int action_index, char *filename) {
       if(strcmp(buff, "")) {
         sprintf(old_path_filename, "%s/%s", BOOKS_PATH, filename);
         sprintf(new_path_filename, "%s/%s", BOOKS_PATH, buff);
-        FFat.rename(old_path_filename, new_path_filename);
+        Storage.rename(old_path_filename, new_path_filename);
       }
     }
   }
@@ -1634,7 +1689,7 @@ void books_action(int action_index, char *filename) {
     if(drawConfirm("Delete this book?") == 0) {
       // Удаляем заметку с соответствующим названием
       sprintf(buff, "%s/%s", BOOKS_PATH, filename);
-      FFat.remove(buff);
+      Storage.remove(buff);
     }
   }
 }
@@ -1708,7 +1763,7 @@ void draw_action(int action_index, char *filename) {
     while(1) {
       index++;
       sprintf(buff, "%s/Draw %d.bmp", DRAW_PATH, index);
-      file = FFat.open(buff);
+      file = Storage.open(buff);
       if(!file) {
         break;
       }
@@ -1729,7 +1784,7 @@ void draw_action(int action_index, char *filename) {
       if(strcmp(buff, "")) {
         sprintf(old_path_filename, "%s/%s", DRAW_PATH, filename);
         sprintf(new_path_filename, "%s/%s", DRAW_PATH, buff);
-        FFat.rename(old_path_filename, new_path_filename);
+        Storage.rename(old_path_filename, new_path_filename);
       }
     }
   }
@@ -1737,7 +1792,7 @@ void draw_action(int action_index, char *filename) {
     if(drawConfirm("Delete this image?") == 0) {
       // Удаляем заметку с соответствующим названием
       sprintf(buff, "%s/%s", DRAW_PATH, filename);
-      FFat.remove(buff);
+      Storage.remove(buff);
     }
   }
 }
@@ -1815,6 +1870,8 @@ void draw_edit(char *title, char *filename) {
   int x, y;
   int prev_touch_x;
   int prev_touch_y;
+  int prev2_touch_x;
+  int prev2_touch_y;
   char touch_started = 0;
   char byte;
   int pixel_color;
@@ -1825,7 +1882,7 @@ void draw_edit(char *title, char *filename) {
   drawAppTitle("Loading...");
 
   // Загрузка из файла (если он есть)
-  file = FFat.open(filename);
+  file = Storage.open(filename);
   if(file) {
     // Пропускаем заголовок BMP (у меня вышло 118 байт, но лучше ориентироваться на размер файла)
     i = file.size() - tft.width() * (tft.height() - 32) / 2;
@@ -1878,8 +1935,12 @@ void draw_edit(char *title, char *filename) {
       touch_y = touchMapY(p.x, p.y);
 
       if(touch_x >= 0 && touch_x < tft.width() && touch_y >= 16 && touch_y < 304) {
+        // Если линия движется медленно, рисовать линию
+        // Нужно для избегания рывков линии при подъёме стилуса
         if(touch_started) {
-          tft.drawLine(prev_touch_x, prev_touch_y, touch_x, touch_y, colors[color_index]);
+          if(abs(touch_x - prev_touch_x) + abs(touch_y - prev_touch_y) < 10) {
+            tft.drawLine(prev_touch_x, prev_touch_y, touch_x, touch_y, colors[color_index]);
+          }
         }
         else {
           tft.drawPixel(touch_x, touch_y, colors[color_index]);
@@ -1903,7 +1964,7 @@ void draw_edit(char *title, char *filename) {
         touchWaitRelease();
         if(modified) {
           drawAppTitle("Saving...");
-          file = FFat.open(filename, FILE_WRITE);
+          file = Storage.open(filename, FILE_WRITE);
           for(i = 0; i < 118; i++) {
             file.write(draw_header[i]);
           }
@@ -1930,7 +1991,7 @@ void draw_edit(char *title, char *filename) {
             }
             file.write((const uint8_t *)buff, 60);
             if(x >= tft.width()) {
-              sprintf(buff, "Saving... (%d/288)", 288 - y - 1);
+              sprintf(buff, "Saving... (%d/288)", 288 - y);
               drawAppTitle(buff);
               x = 0;
               y--;
@@ -2012,10 +2073,10 @@ void pim_app(char *title, char *path, function_conversion_pointer file_to_list_f
         visible_list[i] = NULL;
       }
       // Получаем список файлов
-      current_dir = FFat.open(path);
+      current_dir = Storage.open(path);
       if(!current_dir) {
-        FFat.mkdir(path);
-        current_dir = FFat.open(path);
+        Storage.mkdir(path);
+        current_dir = Storage.open(path);
         if(!current_dir) {
           drawError("Cannot open path");
           return;
@@ -2083,7 +2144,7 @@ void pim_rename_file(char *path, char *old_filename, char *prefix) {
   int offset;
 
   sprintf(old_path_filename, "%s/%s", path, old_filename);
-  file = FFat.open(old_path_filename);
+  file = Storage.open(old_path_filename);
   new_filename[0] = 0;
   offset = 0;
   while(file.available()) {
@@ -2109,7 +2170,7 @@ void pim_rename_file(char *path, char *old_filename, char *prefix) {
     for(offset = 1;; offset++) {
       sprintf(new_filename, "%d", offset);
       sprintf(new_path_filename, "%s/%s%s", path, prefix ? prefix : "", new_filename);
-      file = FFat.open(new_path_filename);
+      file = Storage.open(new_path_filename);
       if(!file) {
         break;
       }
@@ -2121,10 +2182,10 @@ void pim_rename_file(char *path, char *old_filename, char *prefix) {
   if(strcmp("", new_filename) != 0 && strcmp(old_filename, new_filename)) {
     sprintf(new_path_filename, "%s/%s%s", path, prefix ? prefix : "", new_filename);
     // Проверяем что мы не затрём какой-нибудь файл
-    file = FFat.open(new_path_filename);
+    file = Storage.open(new_path_filename);
     if(!file) {
       // И только тогда переименовываем
-      FFat.rename(old_path_filename, new_path_filename);
+      Storage.rename(old_path_filename, new_path_filename);
     }
     else {
       file.close();
@@ -2289,12 +2350,12 @@ void schedule(char mode, char *io_buff) {
       sprintf(filename, "%s/%04d-%02d-%02d", SCHEDULE_PATH, year, month, selected_day);
       sprintf(buff, "%04d-%02d-%02d", year, month, selected_day);
       // Если файла нет, то его нужно создать
-      file = FFat.open(filename);
+      file = Storage.open(filename);
       if(file) {
         file.close();
       }
       else {
-        file = FFat.open(filename, FILE_WRITE);
+        file = Storage.open(filename, FILE_WRITE);
         file.print(schedule_file_template);
         file.close();
       }
@@ -2529,7 +2590,7 @@ void security(char mode, char *io_buff) {
       }
       // Удаление пароля
       else if(button_pressed == 2) {
-        FFat.remove("/Settings/Password");
+        Storage.remove("/Settings/Password");
         drawInfo("Password deleted");
         tft.fillRect(0, 16, tft.width(), tft.height(), TFT_WHITE);
       }
@@ -2598,7 +2659,7 @@ void counter(char mode, char *io_buff) {
     tft.fillRect(0, 16, tft.width(), 30, TFT_WHITE);
 
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
-    sprintf(buff, "%ld", counter);
+    sprintf(buff, " %ld ", counter);
     tft.drawCentreString(buff, tft.width() / 2, 32, FONT_BIGGER);
 
     sprintf(buff, "   BPM: %f   ", bpm);
@@ -2608,7 +2669,7 @@ void counter(char mode, char *io_buff) {
     drawButtonMatrix(0, tft.height() - 64, tft.width(), 64, buttons_other, 2, 1);
 
     touchWaitPress();
-    button_pressed = (0, 100, tft.width(), 100, buttons_inc, 1, 1);
+    button_pressed = touchCheckMatrix(0, 100, tft.width(), 100, buttons_inc, 1, 1);
     if(button_pressed != -1) {
       // Защита от двойного срабатывания
       if(millis() - prev_touch_millis > 100) {
@@ -2686,54 +2747,55 @@ void random_numbers(char mode, char *io_buff) {
   drawAppTitle("Random Numbers");
 
   while(1) {
-    drawButtonMatrix(0, 50, tft.width(), tft.height() - 50, buttons, 2, 4);
+    drawButtonMatrix(0, 52, tft.width(), tft.height() - 52, buttons, 2, 4);
 
     touchWaitPress();
-    button_pressed = touchCheckMatrix(0, 50, tft.width(), tft.height() - 50, buttons, 2, 4);
+    button_pressed = touchCheckMatrix(0, 52, tft.width(), tft.height() - 52, buttons, 2, 4);
     if(button_pressed != -1) {
-      for(i = 0; i != 10; i++) {
-        if(button_pressed == 0) {
-          result = random(0, 2);
-        }
-        else if(button_pressed == 1) {
-          result = random(0, 4) + 1;
-        }
-        else if(button_pressed == 2) {
-          result = random(0, 6) + 1;
-        }
-        else if(button_pressed == 3) {
-          result = random(0, 8) + 1;
-        }
-        else if(button_pressed == 4) {
-          result = random(0, 10) + 1;
-        }
-        else if(button_pressed == 5) {
-          result = random(0, 12) + 1;
-        }
-        else if(button_pressed == 6) {
-          result = random(0, 20) + 1;
-        }
-        else if(button_pressed == 7) {
-          result = random(0, 100) + 1;
-        }
-        sprintf(buff, "%ld", result);
-        if(button_pressed == 0) {
-          if(result == 0) {
-            strcpy(buff, "Head");
-          }
-          else if(result == 1) {
-            strcpy(buff, "Tails");
-          }
-          else {
-            strcpy(buff, "Edge");
-          }
-        }
-
-        tft.fillRect(0, 16, tft.width(), 30, TFT_WHITE);
-        tft.setTextColor(TFT_BLACK, TFT_WHITE);
-        tft.drawCentreString(buff, tft.width() / 2, 20, FONT_BIG);
-        delay(100);
+      tft.fillRect(0, 16, tft.width(), 34, TFT_WHITE);
+      tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      tft.drawCentreString("Spin...", tft.width() / 2, 24, FONT_BIG);
+      delay(500);
+      if(button_pressed == 0) {
+        result = random(0, 2);
       }
+      else if(button_pressed == 1) {
+        result = random(0, 4) + 1;
+      }
+      else if(button_pressed == 2) {
+        result = random(0, 6) + 1;
+      }
+      else if(button_pressed == 3) {
+        result = random(0, 8) + 1;
+      }
+      else if(button_pressed == 4) {
+        result = random(0, 10) + 1;
+      }
+      else if(button_pressed == 5) {
+        result = random(0, 12) + 1;
+      }
+      else if(button_pressed == 6) {
+        result = random(0, 20) + 1;
+      }
+      else if(button_pressed == 7) {
+        result = random(0, 100) + 1;
+      }
+      sprintf(buff, "%ld", result);
+      if(button_pressed == 0) {
+        if(result == 0) {
+          strcpy(buff, "Head");
+        }
+        else if(result == 1) {
+          strcpy(buff, "Tails");
+        }
+        else {
+          strcpy(buff, "Edge");
+        }
+      }
+
+      tft.fillRect(0, 16, tft.width(), 34, TFT_WHITE);
+      tft.setTextColor(TFT_BLACK, TFT_WHITE);
+      tft.drawCentreString(buff, tft.width() / 2, 24, FONT_BIG);
     }
 
     touchWaitReleaseOrExit();
@@ -3921,7 +3983,7 @@ void wifi_select_network() {
     drawButtonMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 2, 1);
     
     touchWaitPress();
-    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 72, networks, 15, &network_offset, &network_selected);
+    touchCheckList(8, 32, tft.width() - 8 * 2, tft.height() - 32 - 40, networks, 15, &network_offset, &network_selected);
 
     button_pressed = touchCheckMatrix(0, 280, tft.width(), tft.height() - 280, buttons, 2, 1);
     if(button_pressed != -1) {
@@ -4708,6 +4770,7 @@ void chat(char mode, char *io_buff) {
   char *query = NULL;
   char message[80];
   char *messages = NULL;
+  char *prev_messages = NULL;
   char update_flag;
   char *buttons[] = {
     "Send message",
@@ -4770,7 +4833,11 @@ void chat(char mode, char *io_buff) {
   tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
   
   messages = (char*)malloc(2048 * sizeof(char));
+  prev_messages = (char*)malloc(2048 * sizeof(char));
   query = (char*)malloc(300 * sizeof(char));
+
+  messages[0] = 0;
+  prev_messages[0] = 0;
 
   update_flag = 1;
   while(1) {
@@ -4779,6 +4846,11 @@ void chat(char mode, char *io_buff) {
       httpResponseCode = http.GET();
       if(httpResponseCode > 0) {
         strcpy(messages, http.getString().c_str());
+        // Если сообщения изменились - бибикнуть
+        if(strlen(prev_messages) > 0 && strcmp(messages, prev_messages)) {
+          tone(BUZZER_PIN, 1000, 100);
+        }
+        strcpy(prev_messages, messages);
         screen_line = 0;
         buff_offset = 0;
         memset(buff, ' ', 40);
@@ -4867,6 +4939,7 @@ void chat(char mode, char *io_buff) {
       drawAppTitle("Exit");
       touchWaitRelease();
       free(messages);
+      free(prev_messages);
       free(query);
       return;
     }
@@ -4999,12 +5072,14 @@ void i2c_scanner(char mode, char *io_buff) {
 #define CLOCK_UPDATE_DATA_INTERVAL 600000
 
 void dashboard(char mode, char *io_buff) {
-  int wifi_status;
   char buff[80];
   char weather[80];
   char rates[80];
+#ifdef IS_WIFI_ENABLED
+  int wifi_status;
   HTTPClient http;
   int httpResponseCode;
+#endif
   long unix_timestamp;
   int hour;
   int min;
@@ -5908,6 +5983,7 @@ void view_file(char *title, char *filename) {
   int current_file_offset_lines = 0;
   int current_line_on_screen = 0;
   int touch_x, touch_y;
+  int i;
   char new_line_flag = 0;
   char show_line_flag = 0;
   char show_next_line_flag = 0;
@@ -5916,12 +5992,13 @@ void view_file(char *title, char *filename) {
   char byte;
   char buff[80];
   char current_string[80];
+  char current_word[80];
 
   clearScreen();
   drawAppTitle(title);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
-  file = FFat.open(filename);
+  file = Storage.open(filename);
   if(!file) {
     drawError("Cannot open file");
     return;
@@ -5941,18 +6018,18 @@ void view_file(char *title, char *filename) {
     current_string[0] = 0;
     tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
 
+    word_offset = 0;
+    current_word[word_offset] = 0;
     while(file.available()) {
       // Читаем слово
-      word_offset = 0;
-      buff[0] = 0;
       new_line_flag = 0;
       show_line_flag = 0;
       long_string_flag = 0;
       while(file.available()) {
         byte = file.read();
-        buff[word_offset] = byte;
+        current_word[word_offset] = byte;
         word_offset++;
-        buff[word_offset] = 0;
+        current_word[word_offset] = 0;
         if(byte == '\n') {
           if(file.peek() == '\r') file.read();
         }
@@ -5963,72 +6040,84 @@ void view_file(char *title, char *filename) {
         if(byte == '\n' || byte == '\r') {
           new_line_flag = 1;
         }
-        if(byte == ' ' || byte == '-' || byte == '\n' || byte == '\r') {
+        if(byte == ' ' || byte == '\n' || byte == '\r') {
           break;
         }
-        // Если это единственное слово в строке и оно уже не помещается
-        if(current_string[0] == 0 && tft.textWidth(buff, FONT_DEFAULT) + 10 >= tft.width()) {
-          show_line_flag = 1;
-          long_string_flag = 1;
+        // Кроме дефиса в начале слова
+        if(byte == '-' && word_offset > 0) {
           break;
         }
         if(word_offset >= 60) {
           break;
         }
       }
-      show_next_line_flag = 0;
-      // Если файл закончился - пора показать строку
-      if(!file.available() || new_line_flag) {
-        show_line_flag = 1;
-      }
-      // Проверяем, поместится ли на текущую строку
-      if(current_string[0] == 0 || tft.textWidth(buff, FONT_DEFAULT) + word_in_line_offset < tft.width()) {
-        // Если поместилась - дописываем в буфер
-        strcat(current_string, buff);
-        word_in_line_offset += tft.textWidth(buff, FONT_DEFAULT);
-      }
-      else {
-        show_line_flag = 1;
-        // Если строка не поместилась, а файл закончился, то её нужно показать тоже
-        if(!file.available()) {
-          show_next_line_flag = 1;
+
+      // Проверяем, помещается ли слово в текущую строку по ширине, байтам
+      if(tft.textWidth(current_string, FONT_DEFAULT) + tft.textWidth(current_word, FONT_DEFAULT) < (tft.width() - 2)
+        && strlen(current_string) + strlen(current_word) < 79) {
+        // Помещаем туда слово, повторяем
+        strcat(current_string, current_word);
+        word_offset = 0;
+        current_word[word_offset] = 0;
+
+        // Если ещё не перенос и файл не закончился - читаем следующее слово
+        if(new_line_flag == 0 && file.available()) {
+          continue;
         }
       }
-      // Если пора показать строку
-      if(show_line_flag) {
-        word_in_line_offset = 0;
+
+      // Если строка пустая, а слово не поместилось, то нужно вывести часть слова, остальное оставить на потом
+      if(strlen(current_string) == 0 && tft.textWidth(current_word, FONT_DEFAULT) < (tft.width() - 2)) {
+        // Убавляем символы из строки пока не поместимся в экран
+        strcpy(current_string, current_word);
+        while(tft.textWidth(current_string, FONT_DEFAULT) >= (tft.width() - 2)) {
+          current_string[strlen(current_string) - 1] = 0;
+        }
+        // От текущего слова надо отрезать соответствующий кусок
+        for(i = 0; i <strlen(current_string); i++) {
+          current_word[i] = current_word[i + strlen(current_string)];
+        }
+        current_word[i] = 0;
+      }
+
+      // Пора выводить строку
+      // Пока не заполнен экран
+      while(current_line_on_screen <= 18) {
+        // Выводить строку только если достигнуто смещение в строках, иначе просто считать строки
         if(current_file_offset_lines >= show_file_offset_lines) {
-          tft.drawString(current_string, 1, 16 + current_line_on_screen * 16, FONT_DEFAULT);
-          // Копируем в буфер непоместившееся слово, если оно есть (не новая строка)
-          if(new_line_flag == 0 && long_string_flag == 0) {
-            strcpy(current_string, buff);
-          }
-          else {
-            current_string[0] = 0;
-          }
-          current_line_on_screen++;
-
-          // Если экран заполнен - выходим
-          if(current_file_offset_lines >= show_file_offset_lines + 18) {
-            break;
-          }
-
-          last_line_visible_flag = 0;
-          if(show_next_line_flag) {
             tft.drawString(current_string, 1, 16 + current_line_on_screen * 16, FONT_DEFAULT);
-            current_string[0] = 0;
             current_line_on_screen++;
-            last_line_visible_flag = 1;
-          }
-          if(!file.available()) {
-            last_line_visible_flag = 1;
-          }
-        }
-        else {
-          buff[0] = 0;  
-          current_string[0] = 0;        
         }
         current_file_offset_lines++;
+        current_string[0] = 0;
+
+        // Если файл закончился или есть остаток строки,
+        // а место на экране ещё есть, нужно вывести остаток из current_word
+        if(!file.available() || new_line_flag) {
+          // Если ничего не осталось - пора выходить
+          if(strlen(current_string) == 0 && strlen(current_word) == 0) {
+            break;
+          }
+          // Убавляем символы из строки пока не поместимся в экран
+          strcpy(current_string, current_word);
+          while(tft.textWidth(current_string, FONT_DEFAULT) >= (tft.width() - 2)) {
+            current_string[strlen(current_string) - 1] = 0;
+          }
+          // От текущего слова надо отрезать соответствующий кусок
+          for(i = 0; i < strlen(current_string); i++) {
+            current_word[i] = current_word[i + strlen(current_string)];
+          }
+          current_word[i] = 0;
+        }
+        else {
+          break;
+        }
+      }
+      current_string[0] = 0;
+
+      // Если экран заполнен - выходим
+      if(current_line_on_screen > 18) {
+        break;
       }
     }
 
@@ -6047,7 +6136,7 @@ void view_file(char *title, char *filename) {
       }
       // Правая - вперёд, если есть куда
       else if(touch_x > tft.width() / 2) {
-        if(file.available() || last_line_visible_flag == 0) {
+        if(file.available() || strlen(current_word) > 0) {
           show_file_offset_lines += 19;
         }
       }
@@ -6141,7 +6230,7 @@ void edit_file(char *title, char *filename) {
   drawAppTitle(title);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
-  file = FFat.open(filename);
+  file = Storage.open(filename);
   if(!file) {
     drawError("Cannot open file");
     return;
@@ -6400,7 +6489,7 @@ void edit_file(char *title, char *filename) {
       drawAppTitle(title);
       // Спрашиваем о сохранении, сохраняем если да
       if(drawConfirm("Save changes?") == 0) {
-        file = FFat.open(filename, FILE_WRITE);
+        file = Storage.open(filename, FILE_WRITE);
         file_offset_bytes = 0;
         while(contents[file_offset_bytes] != 0) {
           file.print(contents[file_offset_bytes]);
@@ -6513,7 +6602,7 @@ void touch_calibration(char mode, char *io_buff) {
 void touch_calibration_save() {
   fs::File file;
   char buff[80];
-  file = FFat.open("/Settings/Calibration", FILE_WRITE);
+  file = Storage.open("/Settings/Calibration", FILE_WRITE);
   if(file) {
     sprintf(buff, "%f %f %f %f %f %f", ax, bx, cx, ay, by, cy);
     file.print(buff);
@@ -7051,7 +7140,7 @@ void checkPasswordUntilCorrect(char *correct_password) {
   drawAppTitle("Enter Password");
 
   // Читаем информацию о владельце
-  file = FFat.open("/Settings/Owner");
+  file = Storage.open("/Settings/Owner");
   if(file) {
     offset = 0;
     owner_info[0] = 0;
@@ -7261,7 +7350,7 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
   // Пустой список - показываем что тут мог быть список
   if(str[0] == NULL) {
     tft.setTextColor(TFT_LIGHTGREY, TFT_WHITE);
-    tft.drawString("<empty list>", left_x + 1, top_y + (0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+    tft.drawString("<empty list>", left_x + 1, top_y, FONT_DEFAULT);
     return;
   }
 
@@ -7271,12 +7360,12 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
       // Если нужно показать [up]
       if(y == 0 && *offset > 0) {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
-        tft.drawString(up, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+        tft.drawString(up, left_x + 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
       }
       // Если нужно показать [down]
       else if(y == (rows_to_show - 1) && (*offset + rows_to_show) <= last_row) {
         tft.fillRect(left_x, top_y + y * height / rows_to_show, width, height / rows_to_show, TFT_WHITE);
-        tft.drawString(down, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+        tft.drawString(down, left_x + 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
       }
       else if(str[y + *offset]) {
         if(y + *offset == *selected) {
@@ -7288,11 +7377,11 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
         }
         getListItemParts(str[y + *offset], left, right);
         if(!strcmp(left, "") && !strcmp(right, "")) {
-          tft.drawString("<empty>", left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+          tft.drawString("<empty>", left_x + 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
         }
         else {
-          tft.drawString(left, left_x + 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
-          tft.drawRightString(right, left_x + width - 1, top_y + (y + 0.5) * height / rows_to_show - 8, FONT_DEFAULT);
+          tft.drawString(left, left_x + 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
+          tft.drawRightString(right, left_x + width - 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
         }
       }
       else {
@@ -7506,7 +7595,7 @@ char read_file_to_buff(char *filename, int limit, char *buff) {
   fs::File file;
   char byte;
   int offset;
-  file = FFat.open(filename);
+  file = Storage.open(filename);
   offset = 0;
   buff[offset] = 0;
   if(file) {
@@ -7525,7 +7614,7 @@ char read_file_to_buff(char *filename, int limit, char *buff) {
 int write_file_from_buff(char *filename, char *buff) {
   fs::File file;
   int offset = 0;
-  file = FFat.open(filename, FILE_WRITE);
+  file = Storage.open(filename, FILE_WRITE);
   if(file) {
     while(buff[offset]) {
       file.print(buff[offset]);
@@ -7599,13 +7688,26 @@ void setup() {
   tft.setRotation(2);
   clearScreen();
 
-  // Инициализация FFat
+  // Инициализация FFat/SD
+    // Инициализация SD
+#ifdef USE_SD_AS_STORAGE
+  sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
+  if (!SD.begin(SD_CS, sdSPI)) {
+    Serial.println("SD Card initialization failed!");
+    fs_present = 0;
+  }
+  else {
+    Serial.println("SD Card ok!");
+    fs_present = 1;
+  }
+#else
   if (FFat.begin(FORMAT_FS_IF_FAILED)) {
     fs_present = 1;
   }
   else {
     fs_present = 0;
   }
+#endif
 
   // Яркость
   global_brightness = 255;
@@ -7630,15 +7732,17 @@ void setup() {
   }
 
   // Тут можно задавать вопросы - сенсор откалиброван
+#ifndef USE_SD_AS_STORAGE
   if(!fs_present) {
     drawError("FFat mount failed");
     if(drawConfirm("Format FFat?") == 0) {
-      FFat.format();
-      FFat.begin(FORMAT_FS_IF_FAILED);
-      FFat.mkdir("/Settings");
+        FFat.format();
+        FFat.begin(FORMAT_FS_IF_FAILED);
+        Storage.mkdir("/Settings");
     }
     touch_calibration_save();
   }
+#endif
 
   // Тут можно спросить пароль
   if(read_file_to_buff("/Settings/Password", 79, buff)) {

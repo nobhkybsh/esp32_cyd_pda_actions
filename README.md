@@ -83,7 +83,6 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Chat
 
 # To Do
-* SD support
 * More games
 * More apps
 * More screensavers

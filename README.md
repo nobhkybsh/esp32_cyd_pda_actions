@@ -60,7 +60,7 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Breathing timer
 * Brightness
 * Lights Off puzzle game - see https://en.wikipedia.org/wiki/Lights_Out_(game) for details
-* Life (Cellular automaton)
+* Life (cellular automaton) - see https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life for details
 * Wi-Fi connection
 * Clock stand
 * Gopher browser - see https://ru.wikipedia.org/wiki/Gopher for details

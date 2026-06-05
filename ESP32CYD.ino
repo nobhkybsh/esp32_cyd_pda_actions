@@ -40,6 +40,7 @@
 - Дела
 - Расходы
 - Расписание
+- Просмотр шрифта
 
 Лог разработки:
 2026-03-11 Лаунчер и статическая информация о системе
@@ -70,36 +71,27 @@
   информационный стенд, I2C сканер
 2026-05-22 Исправлен баг с календарём, неточные часы
 2026-05-23 Исправлены баги гофер-браузера, приложение книги
-Sketch uses 1229450 bytes (93%) of program storage space. Maximum is 1310720 bytes.
-
 2026-05-25 Исправлен баг когда сеть по умолчанию вай-фай недоступна, погода и координаты
 2026-05-26 Значки, чат
-Sketch uses 1236154 bytes (94%) of program storage space. Maximum is 1310720 bytes.
-
 2026-05-27 Настройка времени, часового пояса, немного звуков, работа часов без интернета
 2026-05-28 Текст справа в списке, общая PIM-функция, контакты, дела, расходы, баг в чате, размеры файлов в файловом менеджере
-Sketch uses 1244114 bytes (94%) of program storage space. Maximum is 1310720 bytes.
-Global variables use 51704 bytes (15%) of dynamic memory, leaving 275976 bytes for local variables. Maximum is 327680 bytes.
-
 2026-05-29 Баг с выходом из просмотра, Обработка пар \n\r и \r\n в просмотре, убрать мигание чата, рисование с сохранением, баг выхода,
   знак вопроса в клавиатурные символы
-Sketch uses 1246406 bytes (95%) of program storage space. Maximum is 1310720 bytes.
-
 2026-05-31 Русский шрифт, частично
 2026-06-01 Русский шрифт доработки, расписание
 2026-06-02 Русский шрифт доработки, PIM список по ширине экрана, улучшение счётчика, улучшение информации о системе, ускорение сохранения картинок
-Sketch uses 1252190 bytes (95%) of program storage space. Maximum is 1310720 bytes.
 2026-06-03 Баг со сдвигом на пиксель в списках, баг в просмотре файлов, улучшение рисования, баг в расходах при ручном вводе,
   бип на новые сообщения в чате, баги и улучшения калькулятора, улучшения случайных чисел, поддержка SD как хранилища
+2026-06-04 Цифры и символы на клавиатурах в зависимости от shift, отщёлкивать shift, не сохранять если не было изменений,
+  ограничение длины надписи в списке, возможность редактировать несуществующий файл, удалять пустой файл PIM,
+  ключ-значение чтение и запись, сохранять текущее положение в книгах, процент в калькуляторе,
+  прокрутка текста в drawPrompt, змейка
+2026-06-05 Просмотр шрифта, пасьянс турецкий платок
 
 Направления работы:
-- Русский шрифт маленький
-- Ключ-значение чтение и запись
-- Змейка
 - Тетрис
 - Карточки на память (как Masterbrain)
 - Повтор последовательности
-- Турецкий платок
 
 F
 01111111
@@ -118,20 +110,23 @@ F
 Улучшения тут и там:
 - В файловом менеджере открывать папки / файлы по двойному нажатию
 - Не прокручивать при редактировании дальше конца файла
-- Книги: сохранять место чтения
 - Погода: символ градуса или цельсия возле температуры (выглядит ужасно если взять другой шрифт. Нужно другое решение)
-- Prompt - прокрутка текста, возможность переставлять курсор
+- Prompt - возможность переставлять курсор
 - Гофер браузер - менять домашнюю страницу
 - Гофер браузер - специальная домашняя страница для CYD с объяснениями
 - Гофер браузер - баг с повторяющимися строками?
 - Гофер браузер - кнопка назад
 - Расписание: выводить планы на день по первому нажатию, редактирование по второму или двойному
-- Калькулятор: кнопка % ничего не делает
 - Рисование: на SD не сохраняется картинка
+- Редактирование: меньше мигания
+- Просмотр: меньше мигания
+- Просмотр: прокручивать вперёд без перемотки файла
+- Выложить шрифты на гитхаб
+- Категории для PIM
 
 */
 
-//#define ALT_KEYBOARD_ENABLED
+#define ALT_KEYBOARD_ENABLED
 
 #define IS_WIFI_ENABLED
 
@@ -329,6 +324,9 @@ void i2c_scanner(char mode, char *io_buff);
 void dashboard(char mode, char *io_buff);
 void fuzzy_clock(char mode, char *io_buff);
 void set_clock(char mode, char *io_buff);
+void snake(char mode, char *io_buff);
+void view_font(char mode, char *io_buff);
+void turkish_scarf(char mode, char *io_buff);
 
 typedef void (*function_application_pointer) (char mode, char *io_buff);
 typedef void (*function_action_pointer) (int action, char *filename);
@@ -365,11 +363,14 @@ function_application_pointer apps[] = {
   touch_calibration,
   fifteen,
   lights_off,
+  snake,
+  turkish_scarf,
   life,
   i2c_scanner,
   dashboard,
   fuzzy_clock,
   set_clock,
+  view_font,
   NULL
 };
 
@@ -641,6 +642,17 @@ void calculator(char mode, char *io_buff) {
           if(button_pressed == 23) {
             op = '=';
           }
+        }
+        if(button_pressed == 1) {
+          // Выполнить предыдущую операцию как с процентами
+          if(op == '+') a = b + a * b / 100;
+          if(op == '-') a = b - a * b / 100;
+          if(op == '*') a = a * b / 100;
+          if(op == '/') a = 100 * b / a;
+          b = a;
+          sprintf(screen, "%lg", a);
+          clear_on_input = 1;
+          op = '=';
         }
       }
       // CE
@@ -1195,12 +1207,23 @@ void notes_action(int action_index, char *filename) {
   if(action_index == 0) {
     // Редактируем новый файл
     sprintf(buff, "%s/%s", NOTES_PATH, "__New");
-    file = Storage.open(buff, FILE_WRITE);
-    file.close();
+    //file = Storage.open(buff, FILE_WRITE);
+    //file.close();
     edit_file("New note", buff);
 
-    // Меняем название в соответствии с содержимым
-    pim_rename_file(NOTES_PATH, "__New", NULL);
+    file = Storage.open(buff);
+    if(!file) {
+      return;
+    }
+    else if(file.size() == 0) {
+      file.close();
+      Storage.remove(buff);
+    }
+    else {
+      file.close();
+      // Меняем название в соответствии с содержимым
+      pim_rename_file(NOTES_PATH, "__New", NULL);
+    }
   }
   else if(action_index == 1) {
     // Редактируем существующий файл
@@ -1233,7 +1256,7 @@ void notes_file_to_list(fs::File file, char *buff) {
     left[offset] = byte;
     offset++;
     left[offset] = 0;
-    if(offset > 25) {
+    if(offset > 39) {
       break;
     }
   }
@@ -1289,12 +1312,24 @@ void contacts_action(int action_index, char *filename) {
   if(action_index == 0) {
     // Редактируем новый файл
     sprintf(buff, "%s/%s", CONTACTS_PATH, "__New");
-    file = Storage.open(buff, FILE_WRITE);
-    file.close();
+    //file = Storage.open(buff, FILE_WRITE);
+    //file.close();
     edit_file("New contact", buff);
 
     // Меняем название в соответствии с содержимым
-    pim_rename_file(CONTACTS_PATH, "__New", NULL);
+    file = Storage.open(buff);
+    if(!file) {
+      return;
+    }
+    else if(file.size() == 0) {
+      file.close();
+      Storage.remove(buff);
+    }
+    else {
+      file.close();
+      // Меняем название в соответствии с содержимым
+      pim_rename_file(CONTACTS_PATH, "__New", NULL);
+    }
   }
   else if(action_index == 1) {
     // Редактируем существующий файл
@@ -1327,7 +1362,7 @@ void contacts_file_to_list(fs::File file, char *buff) {
     left[offset] = byte;
     offset++;
     left[offset] = 0;
-    if(offset > 25) {
+    if(offset > 39) {
       break;
     }
   }
@@ -1340,7 +1375,7 @@ void contacts_file_to_list(fs::File file, char *buff) {
     right[offset] = byte;
     offset++;
     right[offset] = 0;
-    if(offset > 25) {
+    if(offset > 39) {
       break;
     }
   }
@@ -1399,12 +1434,23 @@ void todo_action(int action_index, char *filename) {
   if(action_index == 0) {
     // Редактируем новый файл
     sprintf(buff, "%s/%s", TODO_PATH, "__New");
-    file = Storage.open(buff, FILE_WRITE);
-    file.close();
+    //file = Storage.open(buff, FILE_WRITE);
+    //file.close();
     edit_file("New todo item", buff);
 
-    // Меняем название в соответствии с содержимым
-    pim_rename_file(TODO_PATH, "__New", "0_");
+    file = Storage.open(buff);
+    if(!file) {
+      return;
+    }
+    else if(file.size() == 0) {
+      file.close();
+      Storage.remove(buff);
+    }
+    else {
+      file.close();
+      // Меняем название в соответствии с содержимым
+      pim_rename_file(TODO_PATH, "__New", NULL);
+    }
   }
   else if(action_index == 1) {
     // Переключить отметку
@@ -1452,7 +1498,7 @@ void todo_file_to_list(fs::File file, char *buff) {
   while(file.available()) {
     byte = file.read();
     if(byte == '\n') break;
-    if(offset <= 25) {
+    if(offset <= 39) {
       left[offset] = byte;
       offset++;
       left[offset] = 0;
@@ -1464,7 +1510,7 @@ void todo_file_to_list(fs::File file, char *buff) {
   while(file.available()) {
     byte = file.read();
     if(byte == '\n') break;
-    if(offset > 25) {
+    if(offset > 39) {
       right[offset] = byte;
       offset++;
       right[offset] = 0;
@@ -1577,7 +1623,7 @@ void expenses_file_to_list(fs::File file, char *buff) {
       file.read();
     }
     if(byte == '\n' || byte == '\r') break;
-    if(offset <= 25) {
+    if(offset <= 39) {
       left[offset] = byte;
       offset++;
       left[offset] = 0;
@@ -1965,9 +2011,7 @@ void draw_edit(char *title, char *filename) {
         if(modified) {
           drawAppTitle("Saving...");
           file = Storage.open(filename, FILE_WRITE);
-          for(i = 0; i < 118; i++) {
-            file.write(draw_header[i]);
-          }
+          file.write((const uint8_t *)draw_header, 118);
           // Записываем данные изображения с экрана
           x = 0;
           y = 288;
@@ -1987,6 +2031,7 @@ void draw_edit(char *title, char *filename) {
               }
               byte |= color_index;
               x++;
+              //file.write(byte);
               buff[i] = byte;
             }
             file.write((const uint8_t *)buff, 60);
@@ -2163,6 +2208,17 @@ void pim_rename_file(char *path, char *old_filename, char *prefix) {
       if(offset > 20) break;
     }
     if(byte == '\n' || byte == '\r') break;
+  }
+  file.close();
+
+  // Проверяем что такого названия нет
+  if(strcmp("", new_filename) != 0) {
+    sprintf(new_path_filename, "%s/%s%s", path, prefix ? prefix : "", new_filename);
+    file = Storage.open(new_path_filename);
+    if(file) {
+      file.close();
+      strcpy(new_filename, "");
+    }
   }
 
   // Если название не сформировалось даём ему первый свободный цифровой номер
@@ -3753,6 +3809,581 @@ void life_set_cell(int x, int y, char *field, char value) {
   else field[byte] &= ~(1 << offset);
 }
 
+#define SNAKE_CELL_PIXELS 8
+#define SNAKE_FIELD_WIDTH_CELLS (tft.width() / SNAKE_CELL_PIXELS)
+#define SNAKE_FIELD_HEIGHT_CELLS ((tft.height() - 32) / SNAKE_CELL_PIXELS)
+
+void snake(char mode, char *io_buff) {
+  char *field = NULL;
+  char *body = NULL;
+  int x, y;
+  int touch_x, touch_y;
+  int cell_color;
+  long prev_millis = 0;
+  TS_Point p;
+  char direction = 'u';
+  int head_x = SNAKE_FIELD_WIDTH_CELLS / 2;
+  int head_y = SNAKE_FIELD_HEIGHT_CELLS / 2;
+  int bait_x;
+  int bait_y;
+  int segment_x;
+  int segment_y;
+  int length = 3;
+  int record = length;
+  int i;
+  char lose_flag = 0;
+  char restart_flag = 1;
+  char bait_flag = 1;
+  char buff[80];
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000111, B11010010,
+    B01000100, B00000010,
+    B01000100, B00000010,
+    B01000100, B00000010,
+    B01000111, B11110010,
+    B01000000, B00010010,
+    B01011111, B11010010,
+    B01000000, B01010010,
+    B01000000, B01110010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  field = (char *)malloc(SNAKE_FIELD_WIDTH_CELLS * SNAKE_FIELD_HEIGHT_CELLS / 8 * sizeof(char));
+  body = (char *)malloc(SNAKE_FIELD_WIDTH_CELLS * SNAKE_FIELD_HEIGHT_CELLS);
+  
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Snake");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Snake");
+  
+  tft.drawLine(0, 16, tft.width(), tft.height(), TFT_BLACK);
+  tft.drawLine(tft.width(), 16, 0, tft.height(), TFT_BLACK);
+  tft.setTextColor(TFT_BLACK, TFT_WHITE);
+  tft.drawCentreString("UP", tft.width() / 2, tft.height() / 4, FONT_DEFAULT);
+  tft.drawCentreString("DOWN", tft.width() / 2, 3 * tft.height() / 4, FONT_DEFAULT);
+  tft.drawCentreString("LEFT", tft.width() / 4, tft.height() / 2, FONT_DEFAULT);
+  tft.drawCentreString("RIGHT", 3 * tft.width() / 4, tft.height() / 2, FONT_DEFAULT);
+  touchWaitPress();
+  touchWaitRelease();
+
+  restart_flag = 1;
+  while(1) {
+    if(restart_flag) {
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      lose_flag = 0;
+      bait_flag = 1;
+      direction = 'u';
+      length = 3;
+      head_x = SNAKE_FIELD_WIDTH_CELLS / 2;
+      head_y = SNAKE_FIELD_HEIGHT_CELLS / 2;
+      memset(field, 0, SNAKE_FIELD_WIDTH_CELLS * SNAKE_FIELD_HEIGHT_CELLS / 8);
+      for(x = 0; x < SNAKE_FIELD_WIDTH_CELLS; x++) {
+        snake_set_cell(x, 0, field, 1);
+        snake_set_cell(x, SNAKE_FIELD_HEIGHT_CELLS - 1, field, 1);
+      }
+      for(y = 0; y < SNAKE_FIELD_WIDTH_CELLS; y++) {
+        snake_set_cell(0, y, field, 1);
+        snake_set_cell(SNAKE_FIELD_WIDTH_CELLS - 1, y, field, 1);
+      }
+
+      memset(body, 'u', SNAKE_FIELD_WIDTH_CELLS * SNAKE_FIELD_HEIGHT_CELLS);
+      restart_flag = 0;
+    }
+
+    // Игоровой цикл
+    if(millis() - prev_millis > 200) {
+      // Перемещаем голову
+      if(direction == 'u') {
+        head_y--;
+      }
+      else if(direction == 'd') {
+        head_y++;
+      }
+      else if(direction == 'l') {
+        head_x--;
+      }
+      else if(direction == 'r') {
+        head_x++;
+      }
+
+      // Если уже что-то есть в этом месте, это либо тело, либо граница, либо еда
+      if(head_x == bait_x && head_y == bait_y) {
+        length++;
+        if(length > record) record = length;
+        tone(BUZZER_PIN, 3000, 100);
+        bait_flag = 1;
+      }
+      else if(snake_get_cell(head_x, head_y, field)) {
+        lose_flag = 1;
+      }
+      else {
+        snake_set_cell(head_x, head_y, field, 1);
+      }
+      // Сдвигаем массив
+      for(i = SNAKE_FIELD_WIDTH_CELLS * SNAKE_FIELD_HEIGHT_CELLS - 1; i > 0; i--) {
+        body[i] = body[i - 1];
+      }
+      body[0] = direction;
+
+      // Ищем хвост, стираем его
+      segment_x = head_x;
+      segment_y = head_y;
+      for(i = 0; i < SNAKE_FIELD_WIDTH_CELLS * SNAKE_FIELD_HEIGHT_CELLS; i++) {
+        if(body[i] == 'u') segment_y++;
+        if(body[i] == 'd') segment_y--;
+        if(body[i] == 'l') segment_x++;
+        if(body[i] == 'r') segment_x--;
+        if(i == length - 1) {
+          snake_set_cell(segment_x, segment_y, field, 0);
+        }
+      }
+
+      // Кладём еду
+      while(bait_flag) {
+        bait_x = random(1, SNAKE_FIELD_WIDTH_CELLS - 2);
+        bait_y = random(1, SNAKE_FIELD_HEIGHT_CELLS - 2);
+        if(snake_get_cell(bait_x, bait_y, field) == 0) bait_flag = 0;
+      }
+      snake_set_cell(bait_x, bait_y, field, 1);
+
+
+      prev_millis = millis();
+    }
+
+    // Нарисовать поле
+    for(y = 0; y < SNAKE_FIELD_HEIGHT_CELLS; y++) {
+      for(x = 0; x < SNAKE_FIELD_WIDTH_CELLS; x++) {
+        cell_color = TFT_WHITE;
+        if(snake_get_cell(x, y, field)) {
+          cell_color = TFT_DARKGREEN;
+        }
+        if(x == 0 || y == 0 || x == SNAKE_FIELD_WIDTH_CELLS - 1 || y == SNAKE_FIELD_HEIGHT_CELLS - 1) {
+          cell_color = TFT_DARKGREY;
+        }
+        if(x == bait_x && y == bait_y) {
+          cell_color = TFT_RED;
+        }
+        tft.fillRect(
+          x * SNAKE_CELL_PIXELS + 1,
+          32 + y * SNAKE_CELL_PIXELS + 1,
+          SNAKE_CELL_PIXELS - (SNAKE_CELL_PIXELS > 2 ? 2 : 0),
+          SNAKE_CELL_PIXELS - (SNAKE_CELL_PIXELS > 2 ? 2 : 0),
+          cell_color
+        );
+      }
+    }
+    // Счёт и рекорд
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    sprintf(buff, "Length: %d", length);
+    tft.drawString(buff, 1, 16, FONT_DEFAULT);
+    sprintf(buff, "Record: %d", record);
+    tft.drawString(buff, tft.width() / 2, 16, FONT_DEFAULT);
+
+    // Проигрыш
+    if(lose_flag) {
+      drawInfo("You lose");
+      restart_flag = 1;
+      lose_flag = 0;
+    }
+    // Если запущено и касаний нет - обновляем
+    if(touchCheckNowait() == 0) {
+      continue;
+    }
+
+//    drawButtonMatrix(0, 280, tft.width(), 40, buttons, 5, 1);
+
+    touchWaitPress();
+    // Смотрим, нет ли попадания в поле
+    p = touchscreen.getPoint();
+    // Относительные единицы!
+    touch_x = touchMapX(p.x, p.y) * 100 / tft.width();
+    touch_y = touchMapY(p.x, p.y) * 100 / tft.height();
+    if(touch_x > touch_y) {
+      if(touch_x > 100 - touch_y) {
+        if(direction != 'l') direction = 'r';
+      }
+      else {
+        if(direction != 'd') direction = 'u';
+      }
+    }
+    else {
+      if(touch_y > 100 - touch_x) {
+        if(direction != 'u') direction = 'd';
+      }
+      else {
+        if(direction != 'r') direction = 'l';
+      }
+    }
+    Serial.println(direction);
+
+    touchWaitReleaseOrExit();
+    if(global_exit_flag) {
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      free(field);
+      free(body);
+      touchExitActionReset();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+char snake_get_cell(int x, int y, char *field) {
+  int byte;
+  int offset;
+  while(x < 0) x += SNAKE_FIELD_WIDTH_CELLS;
+  while(y < 0) y += SNAKE_FIELD_HEIGHT_CELLS;
+  while(x >= SNAKE_FIELD_WIDTH_CELLS) x %= SNAKE_FIELD_WIDTH_CELLS;
+  while(y >= SNAKE_FIELD_HEIGHT_CELLS) y %= SNAKE_FIELD_HEIGHT_CELLS;
+  //if(x < 0 || y < 0 || x >= SNAKE_FIELD_WIDTH_CELLS || y >= SNAKE_FIELD_HEIGHT_CELLS) return 0;
+
+  byte = (x + y * SNAKE_FIELD_WIDTH_CELLS) / 8;
+  offset = (x + y * SNAKE_FIELD_WIDTH_CELLS) % 8;
+  if(field[byte] & (1 << offset)) return 1;
+  return 0;
+}
+
+void snake_set_cell(int x, int y, char *field, char value) {
+  int byte;
+  int offset;
+  while(x < 0) x += SNAKE_FIELD_WIDTH_CELLS;
+  while(y < 0) y += SNAKE_FIELD_HEIGHT_CELLS;
+  while(x >= SNAKE_FIELD_WIDTH_CELLS) x %= SNAKE_FIELD_WIDTH_CELLS;
+  while(y >= SNAKE_FIELD_HEIGHT_CELLS) y %= SNAKE_FIELD_HEIGHT_CELLS;
+  //if(x < 0 || y < 0 || x >= SNAKE_FIELD_WIDTH_CELLS || y >= SNAKE_FIELD_HEIGHT_CELLS) return;
+  byte = (x + y * SNAKE_FIELD_WIDTH_CELLS) / 8;
+  offset = (x + y * SNAKE_FIELD_WIDTH_CELLS) % 8;
+  if(value) field[byte] |= (1 << offset);
+  else field[byte] &= ~(1 << offset);
+}
+
+
+void turkish_scarf(char mode, char *io_buff) {
+  char field[60];
+  char deck[52];
+  char card;
+  char suit;
+  char *suits[] = {"H", "D", "S", "C", NULL};
+  char *cards[] = {"A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", NULL};
+  int column1;
+  int column2;
+  char card1;
+  char card2;
+  int x, y;
+  int touch_x, touch_y;
+  int cell_color;
+  long prev_millis = 0;
+  TS_Point p;
+  char direction = 'u';
+  int moves;
+  int i;
+  int j;
+  char lose_flag = 0;
+  char restart_flag = 1;
+  char cards_present_flag;
+  char buff[80];
+  int suit_color;
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01001110, B01110010,
+    B01011111, B11111010,
+    B01011111, B11111010,
+    B01011111, B11111010,
+    B01001111, B11110010,
+    B01000111, B11100010,
+    B01000011, B11000010,
+    B01000001, B10000010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+  char suit_hearts[] = {
+      8, 8,
+      B01100110,
+      B11111111,
+      B11111111,
+      B11111111,
+      B11111111,
+      B01111110,
+      B00111100,
+      B00011000
+  };
+  char suit_diamonds[] = {
+      8, 8,
+      B00011000,
+      B00111100,
+      B01111110,
+      B11111111,
+      B11111111,
+      B01111110,
+      B00111100,
+      B00011000
+  };
+  char suit_spades[] = {
+      8, 8,
+      B00011000,
+      B00111100,
+      B01111110,
+      B11111111,
+      B11111111,
+      B01011010,
+      B00011000,
+      B00111100
+  };
+  char suit_clubs[] = {
+      8, 8,
+      B00011000,
+      B00111100,
+      B00011000,
+      B11011011,
+      B11111111,
+      B11011011,
+      B00011000,
+      B00111100
+  };
+  char *suit_images[] = {suit_hearts, suit_diamonds, suit_spades, suit_clubs};
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "Turkish Scarf");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("Turkish Scarf");
+  
+  restart_flag = 1;
+  while(1) {
+    if(restart_flag) {
+      tft.fillRect(0, 16, tft.width(), tft.height() - 16, TFT_WHITE);
+      memset(field, 0xFF, 60);
+      // Инициализируем колоду
+      for(i = 0; i < 52; i++) {
+        deck[i] = i;
+      }
+      // Перемешиваем колоду
+      for(i = 0; i < 52; i++) {
+        card1 = i;
+        card2 = random(0, 52);
+        card = deck[card2];
+        deck[card2] = deck[card1];
+        deck[card1] = card;
+      }
+
+      // Разбираем колоду
+      for(i = 0; i < 52; i++) {
+        // Снимаем карту
+        card1 = deck[i];
+        deck[i] = 0xFF;
+        if(card1 == 0xFF) continue;
+        // Находим карту такого же достоинства
+        for(j = i + 1; j < 52; j++) {
+          if(card1 % 13 == deck[j] % 13) {
+            card2 = deck[j];
+            deck[j] = 0xFF;
+            break;
+          }
+        }
+        // Выбираем колонку для карты, пытаемся положить туда карту
+        while(card1 != 0xFF) {
+          y = 0;
+          column1 = random(0, 10);
+          do {
+            if(column1 + y  * 10 >= 52) break;
+            if(field[column1 + y  * 10] == 0xFF) {
+              field[column1 + y  * 10] = card1;
+              card1 = 0xFF;
+            }
+            y++;
+          } while(card1 != 0xFF);
+        }
+        while(card2 != 0xFF) {
+          y = 0;
+          column2 = random(0, 10);
+          do {
+            if(column2 + y  * 10 >= 52) break;
+            if(field[column2 + y  * 10] == 0xFF) {
+              field[column2 + y  * 10] = card2;
+              card2 = 0xFF;
+            }
+            y++;
+          } while(card2 != 0xFF);
+        }
+      }
+      column1 = -1;
+      column2 = -1;
+      restart_flag = 0;
+    }
+
+    // Нарисовать поле
+    for(y = 0; y < 6; y++) {
+      for(x = 0; x < 10; x++) {
+        if(x + y * 10 >= 52) break;
+        card = field[x + y * 10];
+        if(card == 0xFF) {
+          tft.fillRect(x * tft.width() / 10, 48 + y * 40, tft.width() / 10, 40, TFT_WHITE);
+        }
+        else {
+          suit = card / 13;
+          card = card % 13;
+          sprintf(buff, "%s%s", cards[card], suits[suit]);
+
+          suit_color = TFT_BLACK;
+          if(suit <= 1) {
+            suit_color = TFT_RED;
+          }
+          tft.setTextColor(suit_color, TFT_WHITE);
+
+          tft.drawRoundRect(x * tft.width() / 10 + 1, 48 + y * 40 + 1, tft.width() / 10 - 2, 40 - 2, 3, TFT_BLACK);
+          tft.drawCentreString(cards[card], x * tft.width() / 10 + tft.width() / 20, 48 + y * 40 + 4, FONT_DEFAULT);
+          image_from_bits(x * tft.width() / 10 + tft.width() / 20 - 4, 48 + y * 40 + 20 + 2, suit_images[suit], suit_color, TFT_WHITE);
+          //tft.drawCentreString(suits[suit], x * tft.width() / 10 + tft.width() / 20, 48 + y * 40 + 20, FONT_DEFAULT);
+        }
+      }
+    }
+
+    // Количество ходов
+    moves = 0;
+    cards_present_flag = 0;
+    for(i = 0; i < 9; i++) {
+      // Берём одну карту
+      y = 5;
+      card1 = 0xFF;
+      while(field[i + y * 10] == 0xFF) {
+        y--;
+        if(y < 0) break;
+
+      }
+      if(y >= 0) card1 = field[i + y * 10] % 13;
+      if(card1 == 0xFF) continue;
+      cards_present_flag = 1;
+
+      for(j = i + 1; j < 10; j++) {
+        // Берём другую карту
+        y = 5;
+        card2 = 0xFF;
+        while(field[j + y * 10] == 0xFF) {
+          y--;
+          if(y < 0) break;
+        }
+        if(y >= 0) card2 = field[j + y * 10] % 13;
+        if(card1 == card2) {
+          moves++;
+          break;
+        }
+      }
+    }
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    sprintf(buff, "Moves: %d", moves);
+    tft.drawString(buff, 1, 16, FONT_DEFAULT);
+
+    if(cards_present_flag == 0) {
+      drawInfo("You won!");
+      restart_flag = 1;
+      continue;
+    }
+    else if(moves == 0) {
+      drawInfo("No moves left");
+      restart_flag = 1;
+      continue;
+    }
+    touchWaitPress();
+
+    // Смотрим, какая колонка выбрана
+    p = touchscreen.getPoint();
+    touch_x = touchMapX(p.x, p.y);
+    touch_y = touchMapY(p.x, p.y);
+
+    column2 = column1;
+    column1 = touch_x / (tft.width() / 10);
+
+    tft.fillRect(0, tft.height() - 16, tft.width(), 16, TFT_WHITE);
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+    tft.drawCentreString("^", column1 * tft.width() / 10 + tft.width() / 20, tft.height() - 16, FONT_DEFAULT);
+
+    Serial.print("column1="); Serial.println(column1);
+    Serial.print("column2="); Serial.println(column2);
+
+    if(column2 != -1 && column1 != column2) {
+      // Берём одну карту
+      y = 5;
+      card1 = 0xFF;
+      while(field[column1 + y * 10] == 0xFF) {
+        y--;
+        if(y < 0) break;
+
+      }
+      if(y >= 0) card1 = field[column1 + y * 10] % 13;
+
+      // Берём вторую карту
+      y = 5;
+      card2 = 0xFF;
+      while(field[column2 + y * 10] == 0xFF) {
+        y--;
+        if(y < 0) break;
+      }
+      if(y >= 0) card2 = field[column2 + y * 10] % 13;
+
+      Serial.print("card1="); Serial.println((int)card1);
+      Serial.print("card2="); Serial.println((int)card2);
+
+      // Если они одинаковые - убираем
+      if(card1 != 0xFF && card1 == card2) {
+        // Убираем одну карту
+        y = 5;
+        while(field[column1 + y * 10] == 0xFF) {
+          y--;
+          if(y < 0) break;
+        }
+        if(y >= 0) field[column1 + y * 10] = 0xFF;
+
+        // Убираем другую карту
+        y = 5;
+        while(field[column2 + y * 10] == 0xFF) {
+          y--;
+          if(y < 0) break;
+        }
+        if(y >= 0) field[column2 + y * 10] = 0xFF;
+
+        column1 = -1;
+        column2 = -1;
+      }
+    }
+
+    touchWaitReleaseOrExit();
+    if(global_exit_flag) {
+      drawAppTitle("Exit");
+      touchWaitRelease();
+      touchExitActionReset();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
 #define STAR_COUNT 40
 
 void screensaver(char mode, char *io_buff) {
@@ -5068,6 +5699,10 @@ void i2c_scanner(char mode, char *io_buff) {
   }
 }
 
+// ====================================================
+// Дашборд (часы, календарь, информация)
+// ====================================================
+
 #define CLOCK_UPDATE_SCREEN_INTERVAL 1000
 #define CLOCK_UPDATE_DATA_INTERVAL 600000
 
@@ -5278,6 +5913,10 @@ void dashboard(char mode, char *io_buff) {
     touchWaitRelease();
   }
 }
+
+// ====================================================
+// Неточные часы
+// ====================================================
 
 #define FUZZY_CLOCK_UPDATE_SCREEN_INTERVAL 60000
 
@@ -5568,6 +6207,10 @@ void fuzzy_clock(char mode, char *io_buff) {
   }
 }
 
+// ====================================================
+// Настройка времени
+// ====================================================
+
 void set_clock(char mode, char *io_buff) {
   int button_pressed;
   int i;
@@ -5768,6 +6411,74 @@ void set_clock(char mode, char *io_buff) {
     touchWaitRelease();
   }
 }
+
+// ====================================================
+// Просмотр шрифта
+// ====================================================
+
+void view_font(char mode, char *io_buff) {
+  int i;
+  unsigned char byte;
+  char buff[80];
+  char app_icon[] = {
+    16, 16,
+    B00000000, B00000000,
+    B01111111, B11111110,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01000001, B10000010,
+    B01000010, B01000010,
+    B01000100, B00100010,
+    B01001000, B00010010,
+    B01001000, B00010010,
+    B01001111, B11110010,
+    B01001000, B00010010,
+    B01001000, B00010010,
+    B01000000, B00000010,
+    B01000000, B00000010,
+    B01111111, B11111110,
+    B00000000, B00000000
+  };
+
+  if(mode == APP_MODE_RETURN_NAME) {
+    strcpy(io_buff, "View Font");
+    return;
+  }
+  if(mode == APP_MODE_RETURN_ICON) {
+    memcpy(io_buff, app_icon, 34);
+    return;
+  }
+
+  clearScreen();
+  drawAppTitle("View Font");
+
+  byte = 0;
+  while(1) {
+    tft.setTextColor(TFT_BLACK, TFT_WHITE);
+
+    for(i = 0; i < 16; i++) {
+      sprintf(buff, " %d 0x%02X %c     ", (int)byte, (int)byte, byte);
+      tft.drawString(buff, 1, 16 + i * 16, FONT_DEFAULT);
+      tft.drawString(buff, tft.width() / 2, 16 + i * 16 + 4, FONT_MONOSPACE);
+      byte++;
+    }
+
+    touchWaitPress();
+    touchWaitReleaseOrExit();
+    if(global_exit_flag) {
+      drawAppTitle("Exit");
+      store_current_timestamp();
+      touchWaitRelease();
+      touchExitActionReset();
+      return;
+    }
+    touchWaitRelease();
+  }
+}
+
+// ====================================================
+// Общие функции для устройства
+// ====================================================
 
 void set_local_time_from_unix_timestamp() {
   unsigned long unix_timestamp;
@@ -6008,6 +6719,11 @@ void view_file(char *title, char *filename) {
     return;
   }
 
+  // Нет ли сохранённого смещения для файла?
+  if(read_key_value_from_file("/Settings/View", filename, buff)) {
+    sscanf(buff, "%d", &show_file_offset_lines);
+  }
+
   while(1) {
     // Вывести текст по текущему смещению
     // Начинаем с начала файла и читаем пока не попадём на отображаемую часть
@@ -6147,6 +6863,8 @@ void view_file(char *title, char *filename) {
       drawAppTitle("Exit");
       touchWaitRelease();
       drawAppTitle(title);
+      sprintf(buff, "%d", show_file_offset_lines);
+      write_key_value_to_file("/Settings/View", filename, buff);
       touchExitActionReset();
       return;
     }
@@ -6169,6 +6887,7 @@ void edit_file(char *title, char *filename) {
   char cursor_too_low = 0;
   char cursor_line_number = 0;
   char set_cursor_from_touch = 0;
+  char changes_present = 0;
 
   int string_offset;
   int file_line_number = 0; // Номер текущей строки в файле
@@ -6193,7 +6912,7 @@ void edit_file(char *title, char *filename) {
     NULL
   };
   char *keyboard_caps[] = {
-    "~",  "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ":backspace:",
+    "~",  "!", "@", "#", "$", "%", "^", "&", "*", "(", ")", ":backspace:",
     " ", "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "_",
     ":shift:", "A", "S", "D", "F", "G", "H", "J", "K", "L", ":", ":enter:",
     ":change:", "Z", "X", "C", "V", "B", "N", "M", "<", ">", "?", " ",
@@ -6207,7 +6926,7 @@ void edit_file(char *title, char *filename) {
     NULL
   };
   char *keyboard_alt_nocaps[] = {
-    "\xB8",  "!", "\"", "\xB9", ";", "%", ":", "?", "*", "(", ")", ":backspace:",
+    "\xB8",  "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ":backspace:",
     "\xE9", "\xF6", "\xF3", "\xEA", "\xE5", "\xED", "\xE3", "\xF8", "\xF9", "\xE7", "\xF5", "\xFA",
     ":shift:", "\xF4", "\xFB", "\xE2", "\xE0", "\xEF", "\xF0", "\xEE", "\xEB", "\xE4", "\xE6", ":enter:",
     ":change:", "\xFF", "\xF7", "\xF1", "\xEC", "\xE8", "\xF2", "\xFC", "\xE1", "\xFE", "\xFD", " ",
@@ -6230,31 +6949,29 @@ void edit_file(char *title, char *filename) {
   drawAppTitle(title);
   tft.setTextColor(TFT_BLACK, TFT_WHITE);
 
-  file = Storage.open(filename);
-  if(!file) {
-    drawError("Cannot open file");
-    return;
-  }
-  if(file.isDirectory()) {
-    drawError("Cannot edit directory");
-    return;
-  }
-
-  // Читаем файл в буфер, но не более 8191 байт
   contents[0] = 0;
-  file_offset_bytes = 0;
-  while(file.available()) {
-    contents[file_offset_bytes] = file.read();
-    contents[file_offset_bytes + 1] = 0;
-    file_offset_bytes++;
-    if(file_offset_bytes >= (EDIT_FILE_LENGTH_MAX - 1)) break;
-  }
-  file.close();
+  file = Storage.open(filename);
+  if(file) {
+    if(file.isDirectory()) {
+      drawError("Cannot edit directory");
+      return;
+    }
 
-  // Если файл ещё не кончился - сообщаем об ошибке
-  if(file.available()) {
-    drawError("File too large to edit");
-    return;
+    // Читаем файл в буфер, но не более 8191 байт
+    file_offset_bytes = 0;
+    while(file.available()) {
+      contents[file_offset_bytes] = file.read();
+      contents[file_offset_bytes + 1] = 0;
+      file_offset_bytes++;
+      if(file_offset_bytes >= (EDIT_FILE_LENGTH_MAX - 1)) break;
+    }
+    // Если файл ещё не кончился - сообщаем об ошибке
+    if(file.available()) {
+      drawError("File too large to edit");
+      return;
+    }
+
+    file.close();
   }
 
   file_skip_lines = 0;
@@ -6438,10 +7155,8 @@ void edit_file(char *title, char *filename) {
           }
           cursor_offset_bytes --;
         }
+        changes_present = 1;
       }
-      // Tab
-      //else if(button == 12) {
-      //}
       else if(button == 24) {
         caps_flag = !caps_flag;
       }
@@ -6466,8 +7181,10 @@ void edit_file(char *title, char *filename) {
           }
           else {
             contents[cursor_offset_bytes] = keyboard_current[button][0];
+            caps_flag = 0;
           }
           cursor_offset_bytes++;
+          changes_present = 1;
         }
       }
     }
@@ -6487,15 +7204,17 @@ void edit_file(char *title, char *filename) {
       drawAppTitle("Exit");
       touchWaitRelease();
       drawAppTitle(title);
-      // Спрашиваем о сохранении, сохраняем если да
-      if(drawConfirm("Save changes?") == 0) {
-        file = Storage.open(filename, FILE_WRITE);
-        file_offset_bytes = 0;
-        while(contents[file_offset_bytes] != 0) {
-          file.print(contents[file_offset_bytes]);
-          file_offset_bytes++;
+      if(changes_present) {
+        // Спрашиваем о сохранении, сохраняем если да
+        if(drawConfirm("Save changes?") == 0) {
+          file = Storage.open(filename, FILE_WRITE);
+          file_offset_bytes = 0;
+          //while(contents[file_offset_bytes] != 0) {
+            file.print(contents);
+            //file_offset_bytes++;
+          //}
+          file.close();
         }
-        file.close();
       }
       free(contents);
       touchExitActionReset();
@@ -6947,7 +7666,9 @@ int drawPrompt(char *message, char *user_input) {
   char symbol_flag = 0;
   char alt_flag = 0;
   char input[80] = "";
+  char visible_input[80];
   int cursor_pos = 0;
+  int i;
 
   char *keyboard_nocaps[] = {
     "`",  "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ":backspace:",
@@ -6971,7 +7692,7 @@ int drawPrompt(char *message, char *user_input) {
     NULL
   };
   char *keyboard_alt_nocaps[] = {
-    "\xB8",  "!", "\"", "\xB9", ";", "%", ":", "?", "*", "(", ")", ":backspace:",
+    "\xB8",  "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ":backspace:",
     "\xE9", "\xF6", "\xF3", "\xEA", "\xE5", "\xED", "\xE3", "\xF8", "\xF9", "\xE7", "\xF5", "\xFA",
     ":shift:", "\xF4", "\xFB", "\xE2", "\xE0", "\xEF", "\xF0", "\xEE", "\xEB", "\xE4", "\xE6", ":enter:",
     ":change:", "\xFF", "\xF7", "\xF1", "\xEC", "\xE8", "\xF2", "\xFC", "\xE1", "\xFE", "\xFD", " ",
@@ -7003,9 +7724,15 @@ int drawPrompt(char *message, char *user_input) {
   while(1) {
     tft.setTextColor(TFT_BLACK, TFT_WHITE);
     tft.fillRect(1, PROMPT_OFFSET_Y + 20, tft.width() - 2, 16, TFT_WHITE);
-    cursor_pos = tft.drawString(input, 8, PROMPT_OFFSET_Y + 20, FONT_DEFAULT);
-    tft.setTextColor(TFT_BLUE, TFT_WHITE);
-    tft.drawString("_", 8 + cursor_pos + 1, PROMPT_OFFSET_Y + 20, FONT_DEFAULT);
+    strcpy(visible_input, input);
+    while(tft.textWidth(visible_input, FONT_DEFAULT) > tft.width() - 8 * 2) {
+      for(i = 0; i < strlen(visible_input); i++) {
+        visible_input[i] = visible_input[i + 1];
+      }
+    }
+    cursor_pos = tft.drawString(visible_input, 8, PROMPT_OFFSET_Y + 20, FONT_DEFAULT);
+    //tft.setTextColor(TFT_BLUE, TFT_WHITE);
+    tft.fillRect(8 + cursor_pos + 1, PROMPT_OFFSET_Y + 20, 2, 16, TFT_BLUE);
 
     drawButtonMatrix(8, PROMPT_OFFSET_Y + 180, tft.width() - 8 * 2, 32, buttons, 3, 1);
 
@@ -7072,6 +7799,7 @@ int drawPrompt(char *message, char *user_input) {
       else {
         if(strlen(input) >= 79) continue;
         strcat(input, keyboard_current[button]);
+        caps_flag = 0;
       }
     }
 
@@ -7380,6 +8108,14 @@ void drawList(int left_x, int top_y, int width, int height, char **str, int rows
           tft.drawString("<empty>", left_x + 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
         }
         else {
+          while(tft.textWidth(left, FONT_DEFAULT) + tft.textWidth(right, FONT_DEFAULT) > width - 2) {
+            if(strlen(left) > 5) {
+              left[strlen(left) - 1] = 0;
+            }
+            else {
+              right[strlen(right) - 1] = 0;
+            }
+          }
           tft.drawString(left, left_x + 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
           tft.drawRightString(right, left_x + width - 1, top_y + y * height / rows_to_show, FONT_DEFAULT);
         }
@@ -7611,6 +8347,7 @@ char read_file_to_buff(char *filename, int limit, char *buff) {
   return 0;
 }
 
+// Записать небольшой файл из буфера
 int write_file_from_buff(char *filename, char *buff) {
   fs::File file;
   int offset = 0;
@@ -7621,6 +8358,81 @@ int write_file_from_buff(char *filename, char *buff) {
       offset++;
     }
     file.close();
+    return 1;
+  }
+  return 0;
+}
+
+// Прочитать значение ключа из файла
+int read_key_value_from_file(char *filename, char *key, char *value) {
+  fs::File file;
+  int offset = 0;
+  char str[80];
+  char byte;
+  file = Storage.open(filename);
+  strcpy(value, "");
+  if(file) {
+    while(file.available()) {
+      // Читаем строку
+      offset = 0;
+      while(file.available()) {
+        byte = file.read();
+        str[offset] = byte;
+        offset++;
+        str[offset] = 0;
+        if(byte == '\n' && file.peek() == '\r') file.read();
+        if(byte == '\r' && file.peek() == '\n') file.read();
+        if(byte == '\n' || byte == '\r') break;
+      }
+      // Если строка совпадает с ключом, то копируем значение в буфер
+      if(!memcmp(key, str, strlen(key)) && str[strlen(key)] == '=') {
+        strcpy(value, str + strlen(key) + 1);
+        return 1;
+      }
+    }
+    file.close();
+    return 0;
+  }
+  return 0;
+}
+
+int write_key_value_to_file(char *filename, char *key, char *value) {
+  fs::File new_file;
+  fs::File old_file;
+  int offset = 0;
+  char buff[80];
+  char str[80];
+  char old_filename[80];
+  char byte;
+  sprintf(old_filename, "%s_old", filename);
+  Storage.rename(filename, old_filename);
+  new_file = Storage.open(filename, FILE_WRITE);
+  old_file = Storage.open(old_filename);
+
+  if(new_file) {
+    while(old_file && old_file.available()) {
+      // Читаем строку
+      offset = 0;
+      while(old_file.available()) {
+        byte = old_file.read();
+        str[offset] = byte;
+        offset++;
+        str[offset] = 0;
+        if(byte == '\n' && old_file.peek() == '\r') old_file.read();
+        if(byte == '\r' && old_file.peek() == '\n') old_file.read();
+        if(byte == '\n' || byte == '\r') break;
+      }
+      if(memcmp(key, str, strlen(key)) || str[strlen(key)] != '=') {
+        new_file.print(str);
+      }
+    }
+    // Записываем новые ключ и значение
+    sprintf(buff, "%s=%s", key, value);
+    new_file.println(buff);
+
+    new_file.close();
+    old_file.close();
+    Storage.remove(old_filename);
     return 1;
   }
   return 0;

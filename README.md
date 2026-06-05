@@ -18,7 +18,7 @@ PDA is Personal Digital Assistant. Small handheld computer. Like smartphone with
 * TFT_eSPI - install via arduino library manager
 * XPT2046_Touchscreen - install via arduino library manager
 
-# Installation via Arduino
+# Installation via Arduino IDE
 * Install Arduino IDE
 * Install Required libraries (see above)
 * Replace User_Setup.h with a file from https://github.com/witnessmenow/ESP32-Cheap-Yellow-Display/blob/main/DisplayConfig/User_Setup.h
@@ -62,6 +62,8 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 * Counter
 * I2C Scanner
 * Set clock and timezone
+* View Fonts
+
 ## PIM apps
 * Calculator
 * Notes
@@ -75,18 +77,14 @@ Check instructions at https://randomnerdtutorials.com/cheap-yellow-display-esp32
 ## Games
 * Fifteen puzzle game - see https://en.wikipedia.org/wiki/15_puzzle for details
 * Lights Off puzzle game - see https://en.wikipedia.org/wiki/Lights_Out_(game) for details
+* Snake
+* Turkish Scarf Patience
 
 ## Wi-Fi
 * Wi-Fi connection
 * Gopher browser - see https://ru.wikipedia.org/wiki/Gopher for details
 * Weather
 * Chat
-
-# To Do
-* More games
-* More apps
-* More screensavers
-* More settings
 
 # Terms of use
 You can modify code if you want. Bug reports and pull requests appreciated.

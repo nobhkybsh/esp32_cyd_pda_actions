@@ -1,10 +1,15 @@
-name: Compile ESP32 CYD
+name: Compile and Release
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - 'v*' # Запуск только при создании тега (например, v1.0)
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Необходимо для создания релиза
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,14 +24,16 @@ jobs:
           
       - name: Install Libraries
         run: |
-          # Устанавливаем все необходимые библиотеки
           arduino-cli lib install "TFT_eSPI"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ESPping"
-          # Если появятся ошибки с другими библиотеками, добавляйте их сюда по аналогии:
-          # arduino-cli lib install "ИмяБиблиотеки"
 
       - name: Compile
         run: |
-          # Компилируем проект
           arduino-cli compile --fqbn esp32:esp32:esp32 ./ESP32CYD
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ./ESP32CYD/build/esp32.esp32.esp32/ESP32CYD.ino.bin

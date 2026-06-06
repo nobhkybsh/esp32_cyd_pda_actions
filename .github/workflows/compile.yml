@@ -1,15 +1,15 @@
-name: Compile and Release
+name: Compile and Update Release
 
 on:
   push:
-    tags:
-      - 'v*' # Запуск только при создании тега (например, v1.0)
+    branches: [ "main" ] # Сборка при каждом пуше в main
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Необходимо для создания релиза
+      contents: write # Обязательно для записи в релизы
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,10 +30,16 @@ jobs:
 
       - name: Compile
         run: |
+          # Компилируем (убедитесь, что папка называется ESP32CYD)
           arduino-cli compile --fqbn esp32:esp32:esp32 ./ESP32CYD
 
-      - name: Release
+      - name: Update Latest Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: latest
+          body: "Автоматическая сборка последней версии из ветки main."
+          prerelease: true
           files: |
             ./ESP32CYD/build/esp32.esp32.esp32/ESP32CYD.ino.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

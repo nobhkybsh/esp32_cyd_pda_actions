@@ -2,44 +2,46 @@ name: Compile and Update Release
 
 on:
   push:
-    branches: [ "main" ] # Сборка при каждом пуше в main
+    branches:
+      - main
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Обязательно для записи в релизы
+      contents: write
     
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Arduino CLI
         uses: arduino/setup-arduino-cli@v2
 
-      - name: Install ESP32 Board Package
+      - name: Install ESP32 Platform
         run: |
           arduino-cli core update-index
           arduino-cli core install esp32:esp32
-          
+
       - name: Install Libraries
         run: |
           arduino-cli lib install "TFT_eSPI"
           arduino-cli lib install "XPT2046_Touchscreen"
           arduino-cli lib install "ESPping"
 
-      - name: Compile
+      - name: Compile Project
         run: |
-          # Компилируем (убедитесь, что папка называется ESP32CYD)
+          # Замените ESP32CYD на имя папки, где лежит ваш .ino файл
           arduino-cli compile --fqbn esp32:esp32:esp32 ./ESP32CYD
 
-      - name: Update Latest Release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          body: "Автоматическая сборка последней версии из ветки main."
+          body: "Автоматическая сборка из ветки main"
           prerelease: true
           files: |
-            ./ESP32CYD/build/esp32.esp32.esp32/ESP32CYD.ino.bin
+            **/*.ino.bin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

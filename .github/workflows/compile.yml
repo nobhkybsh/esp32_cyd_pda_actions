@@ -1,0 +1,32 @@
+name: Compile ESP32 CYD
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 Board Package
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          
+      - name: Install Libraries
+        run: |
+          # Установка критически важных библиотек
+          arduino-cli lib install "TFT_eSPI"
+          arduino-cli lib install "XPT2046_Touchscreen"
+          # Если используете другие специфические библиотеки, добавьте их здесь:
+          # arduino-cli lib install "ESPping" 
+
+      - name: Compile
+        run: |
+          # FQBN для обычного ESP32. 
+          # Если у вас S3, измените на esp32:esp32:esp32s3
+          arduino-cli compile --fqbn esp32:esp32:esp32 ./ESP32CYD
